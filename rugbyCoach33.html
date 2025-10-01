@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Lavagna di Rugby — Animazione + Export JPG/WebM/MP4 + Campo Vertical</title>
+  <style>
+    :root {
+      --sidebar-w: 360px;
+      --player-size: 40px;
+      --player-font: 14px;
+      --blue: #0d6efd;
+      --red: #e63946;
+      --ink: #e6edf3;
+      --panel: #0f1720;
+      --panel-2: #111923;
+      --border: #1f2a36;
+      --shadow: 0 4px 16px rgba(0,0,0,.25);
+      --grid: rgba(255,255,255,.08);
+      --yellow: #ffd400;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: #0b1720; color: var(--ink); font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Arial,"Noto Sans",sans-serif; }
+    .app { height: 100dvh; display: grid; grid-template-columns: var(--sidebar-w) 1fr; }
+
+    .sidebar { background: var(--panel-2); border-right: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow: auto; z-index: 1000; -webkit-overflow-scrolling: touch; }
+    .sidebar h1 { font-size: 18px; margin: 0 0 8px 0; }
+    .group { border: 1px solid var(--border); background: var(--panel); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
+    .group strong { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; opacity: .9; }
+    .row { display: grid; gap: 8px; }
+
+    .btn, select, input[type="text"], input[type="number"], input[type="range"], label.chk {
+      appearance: none; border: 1px solid #263443; background: #15202b; color: var(--ink);
+      padding: .55rem .7rem; border-radius: 10px; box-shadow: var(--shadow); font-size: 14px;
+    }
+    .btn { cursor: pointer; text-align: center; }
+    .btn:hover { filter: brightness(1.08); }
+    .btn.alt { background: #0e2235; }
+    small.note { opacity:.8 }
+    .legend { display:flex; align-items:center; gap:8px; font-size: 13px; }
+    .swatch { width: .9em; height: .9em; border-radius: 50%; display:inline-block; }
+
+    .stage { position: relative; display: grid; place-items: center; padding: 16px; overflow: hidden; }
+    .board-viewport { position: relative; width:100%; height:100%; display:grid; place-items:center; contain: layout paint; }
+    .board-wrap { position: absolute; width: 1200px; height: 700px; transform-origin: top left; }
+    .board { position: absolute; inset: 0; background: #137a46; overflow: hidden; border-radius: 18px; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+
+    .board::before {
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background-image: linear-gradient(90deg, rgba(255,255,255,.02) 0 5%, transparent 5% 10%, rgba(255,255,255,.02) 10% 15%, transparent 15% 20%, rgba(255,255,255,.02) 20% 25%, transparent 25% 30%, rgba(255,255,255,.02) 30% 35%, transparent 35% 40%, rgba(255,255,255,.02) 40% 45%, transparent 45% 50%, rgba(255,255,255,.02) 50% 55%, transparent 55% 60%, rgba(255,255,255,.02) 60% 65%, transparent 65% 70%, rgba(255,255,255,.02) 70% 75%, transparent 75% 80%, rgba(255,255,255,.02) 80% 85%, transparent 85% 90%, rgba(255,255,255,.02) 90% 95%, transparent 95% 100%);
+    }
+    .grid-overlay { position:absolute; inset:0; pointer-events:none; opacity:.6; display:none; }
+    .grid-overlay.active { display:block; }
+
+    .lines, #draw { position:absolute; inset:0; pointer-events:none; }
+    svg { width:100%; height:100%; display:block; }
+
+    body, #boardViewport, #boardWrap, #board, #players, #ball, #draw { touch-action:none; }
+
+    #players { position:absolute; inset:0; z-index:3; pointer-events:none; }
+    .player { pointer-events:auto; position:absolute; width:40px; height:40px; border-radius:50%; display:grid; place-items:center; font-weight:700; font-size:14px; color:#fff; cursor:grab; border:2px solid #fff; box-shadow: var(--shadow); }
+    #ball { position:absolute; z-index:4; }
+    .blue { background: var(--blue); } .red { background: var(--red); }
+
+    .ball { width:50px; height:30px; background: var(--yellow); border: 2px solid #fff; border-radius: 50% / 60%; transform: translate(-50%,-50%) rotate(-15deg); box-shadow: 0 3px 12px rgba(0,0,0,.35); cursor: grab; }
+    .ball::after { content:""; position:absolute; inset:6px 18px; border-radius:50% / 60%; border:2px dashed rgba(0,0,0,.25); }
+    .label { font-size:12px; font-weight:700; fill:#fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+
+    .hamburger { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); width: 44px; height: 44px; display:none; place-items:center; font-size:22px; border:1px solid #263443; background:#15202b; color:var(--ink); border-radius:10px; box-shadow: var(--shadow); z-index:1100; }
+    .close-drawer { display:none; position: sticky; top:0; margin-left:auto; width:36px; height:36px; border:1px solid #263443; background:#15202b; color:var(--ink); border-radius:10px; box-shadow: var(--shadow); z-index:1001; }
+    .scrim { position: fixed; inset:0; background: rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:900; }
+    .scrim.show { opacity:1; pointer-events:auto; }
+
+    @media (max-width: 900px) {
+      :root { --sidebar-w: min(86vw, 420px); }
+      html, body { overflow:hidden; height:100dvh; }
+      .app { grid-template-columns: 1fr; height:100dvh; }
+      .sidebar { position: fixed; top:0; left:0; bottom:0; width: var(--sidebar-w); transform: translateX(-105%); transition: transform .25s ease; padding-top: calc(12px + env(safe-area-inset-top)); }
+      .sidebar.open { transform: translateX(0); }
+      .close-drawer { display:inline-grid; place-items:center; }
+      .hamburger { display:inline-grid; }
+      .stage { padding:0; }
+      .board-viewport { position: fixed; top: calc(56px + env(safe-area-inset-top)); left:0; right:0; bottom:0; overflow:hidden; display:grid; place-items:center; }
+    }
+  </style>
+  <!-- FFmpeg.wasm UMD -->
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.min.js"></script>
+</head>
+<body>
+  <button id="menuBtn" class="hamburger" aria-label="Apri pannello">☰</button>
+  <div id="scrim" class="scrim" aria-hidden="true"></div>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <button id="closeMenu" class="close-drawer" aria-label="Chiudi">✕</button>
+      <h1>Lavagna di Rugby</h1>
+
+      <div class="group">
+        <strong>Controlli</strong>
+        <div class="row" style="grid-template-columns: 1fr;">
+          <button class="btn" id="toggleLabels">Mostra etichette</button>
+          <button class="btn alt" id="reset">Reimposta posizioni</button>
+        </div>
+        <label class="chk" style="display:flex;align-items:center;gap:8px;border:none;background:transparent;padding:0;box-shadow:none">
+          <input type="checkbox" id="snapToggle"> Aggancia alla griglia
+        </label>
+        <label class="chk" style="display:flex;align-items:center;gap:8px;border:none;background:transparent;padding:0;box-shadow:none">
+          <input type="checkbox" id="verticalField"> Campo vertical
+        </label>
+        <div class="legend"><span class="swatch" style="background:#0d6efd"></span> Blu (1–15)</div>
+        <div class="legend"><span class="swatch" style="background:#e63946"></span> Rossi (1–15)</div>
+      </div>
+
+      <div class="group">
+        <strong>Disegno</strong>
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
+          <button class="btn" id="toolArrows">Frecce: Attivo</button>
+          <button class="btn alt" id="toolPen">Matita: Inattiva</button>
+        </div>
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
+          <label>Colore
+            <select id="strokeColor">
+              <option value="#ffffff">Bianco</option>
+              <option value="#35d07f">Verde</option>
+              <option value="#0d6efd">Blu</option>
+              <option value="#e63946">Rosso</option>
+              <option value="#f4d35e" selected>Giallo</option>
+            </select>
+          </label>
+          <label>Spessore
+            <select id="strokeWidth">
+              <option value="3">Sottile</option>
+              <option value="5" selected>Medio</option>
+              <option value="7">Grosso</option>
+            </select>
+          </label>
+        </div>
+        <label class="chk" style="border:none;background:transparent;padding:0;box-shadow:none">
+          <input type="checkbox" id="dashedToggle"> Linea tratteggiata
+        </label>
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
+          <button class="btn" id="undoGeneric">Annulla</button>
+          <button class="btn" id="clearArrows">Cancella frecce</button>
+        </div>
+        <button class="btn" id="clearAll">Cancella tutto</button>
+      </div>
+
+      <div class="group">
+        <strong>Giuocate</strong>
+        <input type="text" id="playName" placeholder="Nome giocata" />
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
+          <button class="btn" id="savePlay">Salva</button>
+          <button class="btn alt" id="duplicatePlay">Duplica</button>
+        </div>
+        <select id="loadPlay"></select>
+        <button class="btn" id="deletePlay">Elimina giocata</button>
+      </div>
+
+      <div class="group">
+        <strong>Animazione</strong>
+        <div class="row" style="grid-template-columns: 1fr 1fr; gap:8px;">
+          <button class="btn" id="recordStepBtn">Graba paso</button>
+          <label class="chk" style="display:flex;align-items:center;gap:8px;border:none;background:transparent;padding:.4rem .6rem;box-shadow:none">
+            <input type="checkbox" id="autoRecord"> Auto al soltar
+          </label>
+        </div>
+
+        <div class="row" style="grid-template-columns: 1fr 1fr 1fr; gap:8px;">
+          <button class="btn" id="playBtn">Play</button>
+          <button class="btn alt" id="pauseBtn">Pause</button>
+          <button class="btn" id="stopBtn">Stop</button>
+        </div>
+
+        <div class="row" style="grid-template-columns: auto 1fr; align-items:center;">
+          Velocidad (ms por paso)
+          <input type="number" id="speedInput" min="100" step="100" value="800" />
+        </div>
+
+        <div class="row" style="grid-template-columns: 1fr; gap:8px;">
+          <label>Scrubber (0 → N)
+            <input type="range" id="scrubber" min="0" max="0" value="0" />
+          </label>
+          <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;">
+            <button class="btn alt" id="prevFrameBtn">◀ Anterior</button>
+            <div style="text-align:center;">Frame: <span id="scrubberVal">0</span> / <span id="frameTotal">0</span></div>
+            <button class="btn alt" id="nextFrameBtn">Siguiente ▶</button>
+          </div>
+        </div>
+
+        <div class="row" style="grid-template-columns: 1fr 1fr; gap:8px;">
+          <button class="btn alt" id="clearTimelineBtn">Limpiar animación</button>
+          <button class="btn" id="exportTimelineBtn">Exportar JSON</button>
+        </div>
+        <button class="btn alt" id="importTimelineBtn">Importar JSON</button>
+        <div style="font-size:12px;opacity:.8;">Frames guardados: <span id="frameCount">0</span></div>
+      </div>
+
+      <div class="group">
+        <strong>Export</strong>
+        <div class="row" style="grid-template-columns: 1fr;">
+          <button class="btn" id="exportJpgBtn">Exportar imagen (JPG)</button>
+          <button class="btn alt" id="exportVideoBtn">Exportar video (WebM)</button>
+          <button class="btn" id="exportMp4Btn">Exportar MP4 (beta)</button>
+          <small class="note">El video incluye jugadores, pallone, flechas y líneas. MP4 usa ffmpeg.wasm (puede tardar la 1ª vez).</small>
+          <div id="ffmpegStatus" class="note"></div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="board-viewport" id="boardViewport">
+        <div class="board-wrap" id="boardWrap">
+          <div id="board" class="board">
+            <svg class="grid-overlay" id="grid" viewBox="0 0 1200 700" preserveAspectRatio="none"></svg>
+
+            <svg class="lines" viewBox="0 0 1200 700" preserveAspectRatio="none" aria-hidden="true">
+              <rect x="5" y="5" width="1190" height="690" fill="none" stroke="#fff" stroke-width="6" />
+              <rect x="0" y="0" width="80" height="700" fill="rgba(255,255,255,.07)" />
+              <rect x="1120" y="0" width="80" height="700" fill="rgba(255,255,255,.07)" />
+              <line x1="80" y1="0" x2="80" y2="700" stroke="#fff" stroke-width="4" />
+              <line x1="1120" y1="0" x2="1120" y2="700" stroke="#fff" stroke-width="4" />
+              <line x1="309" y1="0" x2="309" y2="700" stroke="#fff" stroke-width="3" />
+              <line x1="891" y1="0" x2="891" y2="700" stroke="#fff" stroke-width="3" />
+              <line x1="500" y1="0" x2="500" y2="700" stroke="#fff" stroke-width="2" stroke-dasharray="8 10" />
+              <line x1="697" y1="0" x2="697" y2="700" stroke="#fff" stroke-width="2" stroke-dasharray="8 10" />
+              <line x1="600" y1="0" x2="600" y2="700" stroke="#fff" stroke-width="4" />
+              <line x1="5" y1="50" x2="1195" y2="50" stroke="#fff" stroke-width="2" stroke-dasharray="4 8" />
+              <line x1="5" y1="150" x2="1195" y2="150" stroke="#fff" stroke-width="2" stroke-dasharray="4 8" />
+              <line x1="5" y1="550" x2="1195" y2="550" stroke="#fff" stroke-width="2" stroke-dasharray="4 8" />
+              <line x1="5" y1="650" x2="1195" y2="650" stroke="#fff" stroke-width="2" stroke-dasharray="4 8" />
+              <line x1="130" y1="0" x2="130" y2="700" stroke="#fff" stroke-width="2" stroke-dasharray="8 10"/>
+              <line x1="1070" y1="0" x2="1070" y2="700" stroke="#fff" stroke-width="2" stroke-dasharray="8 10"/>
+            </svg>
+
+            <svg id="draw" viewBox="0 0 1200 700" preserveAspectRatio="none"></svg>
+            <div id="players"></div>
+            <div id="ball" class="ball" title="Pallone"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Canvas de exportación (no visible) -->
+      <canvas id="exportCanvas" width="1200" height="700" style="display:none"></canvas>
+    </main>
+  </div>
+
+  <script>
+    const WIDTH = 1200, HEIGHT = 700;
+    const GRID_SIZE = 24;
+
+    // DOM
+    const boardViewport = document.getElementById('boardViewport');
+    const boardWrap = document.getElementById('boardWrap');
+    const board = document.getElementById('board');
+    const playersLayer = document.getElementById('players');
+    const draw = document.getElementById('draw');
+    const gridSvg = document.getElementById('grid');
+    const ball = document.getElementById('ball');
+    const exportCanvas = document.getElementById('exportCanvas');
+    const ctx = exportCanvas.getContext('2d');
+
+    // Sidebar
+    const sidebar = document.getElementById('sidebar');
+    const menuBtn = document.getElementById('menuBtn');
+    const closeMenuBtn = document.getElementById('closeMenu');
+    const scrim = document.getElementById('scrim');
+
+    // UI disegno
+    const toggleLabelsBtn = document.getElementById('toggleLabels');
+    const resetBtn = document.getElementById('reset');
+    const snapToggle = document.getElementById('snapToggle');
+    const verticalFieldChk = document.getElementById('verticalField');
+
+    const toolArrowsBtn = document.getElementById('toolArrows');
+    const toolPenBtn = document.getElementById('toolPen');
+    const undoGenericBtn = document.getElementById('undoGeneric');
+    const clearArrowsBtn = document.getElementById('clearArrows');
+    const clearAllBtn = document.getElementById('clearAll');
+    const strokeColorSel = document.getElementById('strokeColor');
+    const strokeWidthSel = document.getElementById('strokeWidth');
+    const dashedToggle = document.getElementById('dashedToggle');
+
+    // Export
+    const exportJpgBtn = document.getElementById('exportJpgBtn');
+    const exportVideoBtn = document.getElementById('exportVideoBtn');
+    const exportMp4Btn = document.getElementById('exportMp4Btn');
+    const ffmpegStatus = document.getElementById('ffmpegStatus');
+
+    // GIOCATE
+    const playNameInput = document.getElementById('playName');
+    const loadPlaySel = document.getElementById('loadPlay');
+    const savePlayBtn = document.getElementById('savePlay');
+    const duplicatePlayBtn = document.getElementById('duplicatePlay');
+    const deletePlayBtn = document.getElementById('deletePlay');
+
+    // ANIMACIÓN – UI
+    const recordStepBtn = document.getElementById('recordStepBtn');
+    const autoRecordChk = document.getElementById('autoRecord');
+    const playBtn = document.getElementById('playBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const speedInput = document.getElementById('speedInput');
+    const clearTimelineBtn = document.getElementById('clearTimelineBtn');
+    const exportTimelineBtn = document.getElementById('exportTimelineBtn');
+    const importTimelineBtn = document.getElementById('importTimelineBtn');
+    const frameCountEl = document.getElementById('frameCount');
+
+    // Scrubber
+    const scrubber = document.getElementById('scrubber');
+    const scrubberVal = document.getElementById('scrubberVal');
+    const frameTotal = document.getElementById('frameTotal');
+    const prevFrameBtn = document.getElementById('prevFrameBtn');
+    const nextFrameBtn = document.getElementById('nextFrameBtn');
+
+    // Drawer
+    function openMenu(){ sidebar.classList.add('open'); scrim.classList.add('show'); }
+    function closeMenu(){ sidebar.classList.remove('open'); scrim.classList.remove('show'); }
+    menuBtn.addEventListener('click', openMenu);
+    closeMenuBtn.addEventListener('click', closeMenu);
+    scrim.addEventListener('click', closeMenu);
+    window.addEventListener('resize', ()=>{ if (window.innerWidth > 900) closeMenu(); });
+
+    // ---- Layout / Campo vertical ----
+    const layout = { mode:'landscape', scale:1, tx:0, ty:0 };
+    let forceVertical = false; // override manual
+
+    function isPortraitLike(){
+      if (forceVertical) return true;
+      const mq = window.matchMedia('(orientation: portrait)');
+      return (mq && mq.matches) || (window.innerHeight > window.innerWidth);
+    }
+
+    // Rotar jugadores (y opcional balón) para que se lean derechos en campo vertical
+    function applyUprightTransforms(){
+      const rotatePlayers = (layout.mode === 'portrait');
+      [...playersLayer.children].forEach(el => {
+        el.style.transform = rotatePlayers
+          ? 'translate(-50%, -50%) rotate(-90deg)'
+          : 'translate(-50%, -50%)';
+      });
+      // Si querés enderezar también el balón, descomenta esto:
+      // if (rotatePlayers) {
+      //   ball.style.transform = 'translate(-50%, -50%) rotate(-90deg) rotate(-15deg)';
+      // } else {
+      //   ball.style.transform = 'translate(-50%, -50%) rotate(-15deg)';
+      // }
+    }
+
+    function fitBoard(){
+      if (!isPortraitLike()){
+        layout.mode = 'landscape';
+        layout.scale = 1; layout.tx = 0; layout.ty = 0;
+        boardWrap.style.transform = 'translate(0px,0px) rotate(0deg) scale(1)';
+        boardWrap.style.transformOrigin = 'top left';
+        applyUprightTransforms();
+        return;
+      }
+
+      // Campo vertical rotado 90°, asegurando que se vea completo
+      layout.mode = 'portrait';
+      const vp = boardViewport.getBoundingClientRect();
+      const availW = vp.width, availH = vp.height;
+      const scale = Math.min(availW / HEIGHT, availH / WIDTH); // dimensiones del rectángulo rotado (HEIGHT x WIDTH)
+      layout.scale = scale;
+      layout.tx = (availW - HEIGHT * scale) / 2;
+      layout.ty = (availH - WIDTH  * scale) / 2;
+
+      boardWrap.style.transform = `translate(${layout.tx}px, ${layout.ty}px) rotate(90deg) scale(${layout.scale})`;
+      boardWrap.style.transformOrigin = 'top left';
+
+      applyUprightTransforms();
+    }
+    window.addEventListener('resize', fitBoard);
+    window.addEventListener('orientationchange', fitBoard);
+    verticalFieldChk.addEventListener('change', () => { forceVertical = !!verticalFieldChk.checked; fitBoard(); });
+
+    // Coord transform
+    function clientToBoard(e){
+      const vp = boardViewport.getBoundingClientRect();
+      const cx = e.clientX - vp.left;
+      const cy = e.clientY - vp.top;
+      if (layout.mode === 'portrait'){
+        const px = cx - layout.tx;
+        const py = cy - layout.ty;
+        const x = WIDTH - (py / layout.scale);
+        const y = (px / layout.scale);
+        return { x: Math.max(0, Math.min(WIDTH, x)), y: Math.max(0, Math.min(HEIGHT, y)) };
+      } else {
+        const rect = board.getBoundingClientRect();
+        const scale = rect.width / WIDTH;
+        const x = (e.clientX - rect.left) / scale;
+        const y = (e.clientY - rect.top) / scale;
+        return { x: Math.max(0, Math.min(WIDTH, x)), y: Math.max(0, Math.min(HEIGHT, y)) };
+      }
+    }
+    function deltaToBoard(dxClient, dyClient){
+      if (layout.mode === 'portrait'){
+        const dx = -dyClient / layout.scale;
+        const dy =  dxClient / layout.scale;
+        return { dx, dy };
+      } else {
+        const rect = board.getBoundingClientRect();
+        const scale = rect.width / WIDTH;
+        return { dx: dxClient / scale, dy: dyClient / scale };
+      }
+    }
+
+    // Grilla fija + snap
+    function snap(val){ return Math.round(val / GRID_SIZE) * GRID_SIZE; }
+    function renderGrid(){
+      const s = GRID_SIZE;
+      gridSvg.innerHTML='';
+      const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+      for(let x=s;x<WIDTH;x+=s){
+        const l=document.createElementNS('http://www.w3.org/2000/svg','line');
+        l.setAttribute('x1',x); l.setAttribute('y1',0); l.setAttribute('x2',x); l.setAttribute('y2',HEIGHT);
+        l.setAttribute('stroke','var(--grid)'); l.setAttribute('stroke-width','1'); g.appendChild(l);
+      }
+      for(let y=s;y<HEIGHT;y+=s){
+        const l=document.createElementNS('http://www.w3.org/2000/svg','line');
+        l.setAttribute('x1',0); l.setAttribute('y1',y); l.setAttribute('x2',WIDTH); l.setAttribute('y2',y);
+        l.setAttribute('stroke','var(--grid)'); l.setAttribute('stroke-width','1'); g.appendChild(l);
+      }
+      gridSvg.appendChild(g);
+      gridSvg.classList.toggle('active', snapToggle.checked);
+    }
+
+    // ---- Giocatori ----
+    const initialPositions = [];
+    for (let i=1;i<=15;i++) initialPositions.push({team:'blue',number:i,x: WIDTH*0.18, y: HEIGHT*(0.1 + (i-1)*(0.8/14))});
+    for (let i=1;i<=15;i++) initialPositions.push({team:'red', number:i,x: WIDTH*0.82, y: HEIGHT*(0.1 + (i-1)*(0.8/14))});
+
+    function createPlayers(){
+      playersLayer.innerHTML='';
+      initialPositions.forEach(p=>{
+        const el = document.createElement('div');
+        el.className = `player ${p.team}`;
+        el.textContent = p.number;
+        el.style.left = (p.x) + 'px';
+        el.style.top  = (p.y) + 'px';
+        // NO fijamos transform acá; lo maneja applyUprightTransforms()
+        el.dataset.number = p.number;
+        el.dataset.team = p.team;
+        enableDragPlayer(el, () => { savePositions(); if (autoRecordChk.checked) recordFrame(); });
+        playersLayer.appendChild(el);
+      });
+      applyUprightTransforms();
+    }
+
+    // ---- Pallone ----
+    function placeBall(x=WIDTH*0.5, y=HEIGHT*0.5){
+      ball.style.left = x + 'px';
+      ball.style.top  = y + 'px';
+      ball.style.transform = 'translate(-50%, -50%) rotate(-15deg)';
+    }
+    function saveBall(){ localStorage.setItem('rugby-ball-v1', JSON.stringify({ x: parseFloat(ball.style.left)||WIDTH/2, y: parseFloat(ball.style.top)||HEIGHT/2 })); }
+    function loadBall(){
+      try{
+        const b = JSON.parse(localStorage.getItem('rugby-ball-v1')||'null');
+        if (b && typeof b.x==='number' && typeof b.y==='number') placeBall(b.x, b.y);
+        else placeBall(WIDTH/2, HEIGHT/2);
+      }catch{ placeBall(WIDTH/2, HEIGHT/2); }
+    }
+
+    // Helpers
+    function dist(ax, ay, bx, by){ const dx=ax-bx, dy=ay-by; return Math.hypot(dx,dy); }
+    function centerOf(el){ return { x: parseFloat(el.style.left)||0, y: parseFloat(el.style.top)||0 }; }
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+    function ballOverPlayer(playerEl, threshold=28){
+      const b = centerOf(ball);
+      const p = centerOf(playerEl);
+      return dist(b.x,b.y,p.x,p.y) < threshold;
+    }
+
+    // Pass preview
+    function setPassPreview(x1,y1,x2,y2){
+      const svg = document.getElementById('draw');
+      let line = svg.querySelector('#passPreview');
+      if (!line){
+        line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('id','passPreview');
+        line.setAttribute('fill','none');
+        line.setAttribute('stroke','#ffffff');
+        line.setAttribute('stroke-width','3');
+        line.setAttribute('stroke-dasharray','10 8');
+        line.setAttribute('opacity','0.9');
+        line.setAttribute('vector-effect','non-scaling-stroke');
+        svg.appendChild(line);
+      }
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+    }
+    function clearPassPreview(){
+      const svg = document.getElementById('draw');
+      const line = svg.querySelector('#passPreview');
+      if (line) line.remove();
+    }
+
+    // Arrastre de JUGADOR: con offset fijo para el balón si estaba encima
+    function enableDragPlayer(playerEl, onDrop){
+      let pointerId = null, startX=0, startY=0, origL=0, origT=0;
+      let lockBallToPlayer = false;
+      let offX = 0, offY = 0;
+
+      const onDown = e => {
+        pointerId = e.pointerId;
+        playerEl.setPointerCapture(pointerId);
+        e.preventDefault();
+        startX = e.clientX; startY = e.clientY;
+        origL = parseFloat(playerEl.style.left)||0;
+        origT = parseFloat(playerEl.style.top)||0;
+
+        lockBallToPlayer = ballOverPlayer(playerEl);
+        if (lockBallToPlayer){
+          const p0 = { x: origL, y: origT };
+          const b0 = centerOf(ball);
+          offX = b0.x - p0.x;
+          offY = b0.y - p0.y;
+        }
+
+        const onMove = ev => {
+          if (ev.pointerId !== pointerId) return;
+          ev.preventDefault();
+          const { dx, dy } = deltaToBoard(ev.clientX - startX, ev.clientY - startY);
+          let nx = clamp(origL + dx, 0, WIDTH);
+          let ny = clamp(origT + dy, 0, HEIGHT);
+          playerEl.style.left = nx + 'px';
+          playerEl.style.top  = ny + 'px';
+
+          if (lockBallToPlayer){
+            const bx = clamp(nx + offX, 0, WIDTH);
+            const by = clamp(ny + offY, 0, HEIGHT);
+            ball.style.left = bx + 'px';
+            ball.style.top  = by + 'px';
+          }
+        };
+
+        const onUp = ev => {
+          if (ev.pointerId !== pointerId) return;
+          try { playerEl.releasePointerCapture(pointerId); } catch {}
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+
+          if (snapToggle.checked){
+            const px = snap(parseFloat(playerEl.style.left));
+            const py = snap(parseFloat(playerEl.style.top));
+            playerEl.style.left = px + 'px';
+            playerEl.style.top  = py + 'px';
+            if (lockBallToPlayer){
+              const sbx = clamp(snap(px + offX), 0, WIDTH);
+              const sby = clamp(snap(py + offY), 0, HEIGHT);
+              ball.style.left = sbx + 'px';
+              ball.style.top  = sby + 'px';
+            }
+          }
+
+          (onDrop || (()=>{}))();
+        };
+
+        document.addEventListener('pointermove', onMove, {passive:false});
+        document.addEventListener('pointerup', onUp, {passive:false});
+      };
+
+      playerEl.addEventListener('pointerdown', onDown, {passive:false});
+      playerEl.ondragstart = () => false;
+    }
+
+    // Arrastre de PALLONE: siempre solo + línea de pase temporal
+    function enableDragBall(onDrop){
+      let pointerId = null, startX=0, startY=0, origL=0, origT=0;
+      let passerEl = null;
+
+      const onDown = e => {
+        pointerId = e.pointerId;
+        ball.setPointerCapture(pointerId);
+        e.preventDefault();
+        startX = e.clientX; startY = e.clientY;
+        origL = parseFloat(ball.style.left)||0;
+        origT = parseFloat(ball.style.top)||0;
+
+        const b0 = centerOf(ball);
+        passerEl = (function(){
+          let best=null, bestD=Infinity;
+          for (const el of playersLayer.children){
+            const p = centerOf(el);
+            const d = dist(b0.x,b0.y,p.x,p.y);
+            if (d < 28 && d < bestD){ best=el; bestD=d; }
+          }
+          return best;
+        })();
+
+        if (passerEl){
+          const p = centerOf(passerEl);
+          setPassPreview(p.x,p.y,b0.x,b0.y);
+        }
+
+        const onMove = ev => {
+          if (ev.pointerId !== pointerId) return;
+          ev.preventDefault();
+          const { dx, dy } = deltaToBoard(ev.clientX - startX, ev.clientY - startY);
+          let nx = clamp(origL + dx, 0, WIDTH);
+          let ny = clamp(origT + dy, 0, HEIGHT);
+          ball.style.left = nx + 'px';
+          ball.style.top  = ny + 'px';
+
+          if (passerEl){
+            const p = centerOf(passerEl);
+            setPassPreview(p.x,p.y,nx,ny);
+          }
+        };
+
+        const onUp = ev => {
+          if (ev.pointerId !== pointerId) return;
+          try { ball.releasePointerCapture(pointerId); } catch {}
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+
+          if (snapToggle.checked){
+            ball.style.left = snap(parseFloat(ball.style.left)) + 'px';
+            ball.style.top  = snap(parseFloat(ball.style.top)) + 'px';
+          }
+
+          clearPassPreview();
+          (onDrop || (()=>{}))();
+        };
+
+        document.addEventListener('pointermove', onMove, {passive:false});
+        document.addEventListener('pointerup', onUp, {passive:false});
+      };
+
+      ball.addEventListener('pointerdown', onDown, {passive:false});
+      ball.ondragstart = () => false;
+    }
+
+    enableDragBall(() => { saveBall(); if (autoRecordChk.checked) recordFrame(); });
+
+    // ---- Disegno: frecce + matita ----
+    let tool = 'arrows';
+    let drawingArrow = false;
+    let startPoint = null;
+    let arrows = [];
+    let drawingStroke = false;
+    let currentStroke = null;
+    let strokes = [];
+
+    function markerId(color){
+      const map = {'#ffffff':'arrowWhite','#35d07f':'arrowGreen','#0d6efd':'arrowBlue','#e63946':'arrowRed','#f4d35e':'arrowYellow'};
+      return map[color] || 'arrowYellow';
+    }
+    function ensureMarkers(){
+      if (draw.querySelector('defs')) return;
+      const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+      function mk(id, color){
+        const m = document.createElementNS('http://www.w3.org/2000/svg','marker');
+        m.setAttribute('id', id); m.setAttribute('markerWidth','10'); m.setAttribute('markerHeight','10');
+        m.setAttribute('refX','9'); m.setAttribute('refY','5'); m.setAttribute('orient','auto');
+        const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+        poly.setAttribute('points','0 0, 10 5, 0 10'); poly.setAttribute('fill', color); m.appendChild(poly); defs.appendChild(m);
+      }
+      mk('arrowWhite','#ffffff'); mk('arrowGreen','#35d07f'); mk('arrowBlue','#0d6efd'); mk('arrowRed','#e63946'); mk('arrowYellow','#f4d35e');
+      draw.appendChild(defs);
+    }
+    function renderDraw(){
+      ensureMarkers();
+      const defs = draw.querySelector('defs');
+      [...draw.childNodes].forEach(n => { if (n !== defs) draw.removeChild(n); });
+      strokes.forEach(s => {
+        const poly = document.createElementNS('http://www.w3.org/2000/svg','polyline');
+        poly.setAttribute('fill','none');
+        poly.setAttribute('stroke', s.color || '#f4d35e');
+        poly.setAttribute('stroke-width', s.width || 5);
+        if (s.dashed) poly.setAttribute('stroke-dasharray','8 8');
+        poly.setAttribute('vector-effect','non-scaling-stroke');
+        poly.setAttribute('points', s.points.join(' '));
+        draw.appendChild(poly);
+      });
+      arrows.forEach((a) => {
+        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+        const line = document.createElementNS('http://www.w3.org/200.svg','line'); // (typo intencional? No) — corregimos abajo
+      });
+      // --- corregimos el createElementNS del line (arriba estaba mal por accidente de edición) ---
+      draw.querySelectorAll('g').forEach(n=>n.remove()); // limpieza si quedó algo
+      arrows.forEach((a) => {
+        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', a.x1); line.setAttribute('y1', a.y1); line.setAttribute('x2', a.x2); line.setAttribute('y2', a.y2);
+        line.setAttribute('stroke', a.color || '#f4d35e'); line.setAttribute('stroke-width', a.width || 5);
+        if (a.dashed) line.setAttribute('stroke-dasharray', '8 8');
+        line.setAttribute('marker-end', `url(#${markerId(a.color || '#f4d35e')})`);
+        line.setAttribute('vector-effect','non-scaling-stroke');
+        g.appendChild(line);
+        draw.appendChild(g);
+      });
+    }
+
+    // Interacción campo para frecce/matita
+    board.addEventListener('pointerdown', e => {
+      if (e.target.closest('.player') || e.target.closest('#ball')) return;
+      try { board.setPointerCapture(e.pointerId); } catch {}
+      let p = clientToBoard(e);
+      if (snapToggle.checked){ p.x = snap(p.x); p.y = snap(p.y); }
+
+      if (tool === 'arrows'){
+        drawingArrow = true; startPoint = { x: p.x, y: p.y };
+      } else {
+        drawingStroke = true;
+        currentStroke = {
+          points: [ `${p.x},${p.y}` ],
+          color: strokeColorSel.value,
+          width: parseInt(strokeWidthSel.value,10) || 5,
+          dashed: !!dashedToggle.checked
+        };
+        strokes.push(currentStroke);
+        renderDraw();
+      }
+      e.preventDefault();
+    }, {passive:false});
+
+    board.addEventListener('pointermove', e => {
+      if (tool !== 'pen' || !drawingStroke || !currentStroke) return;
+      let p = clientToBoard(e);
+      if (snapToggle.checked){ p.x = snap(p.x); p.y = snap(p.y); }
+      const last = currentStroke.points.length ? currentStroke.points[currentStroke.points.length-1] : null;
+      const [lx, ly] = last ? last.split(',').map(Number) : [NaN, NaN];
+      const dx = (isNaN(lx)?Infinity:Math.abs(p.x - lx));
+      const dy = (isNaN(ly)?Infinity:Math.abs(p.y - ly));
+      if (dx + dy > 0.5) {
+        currentStroke.points.push(`${p.x},${p.y}`);
+        renderDraw();
+      }
+      e.preventDefault();
+    }, {passive:false});
+
+    board.addEventListener('pointerup', e => {
+      try { board.releasePointerCapture(e.pointerId); } catch {}
+      let p = clientToBoard(e);
+      if (snapToggle.checked){ p.x = snap(p.x); p.y = snap(p.y); }
+
+      if (tool === 'arrows'){
+        if (!drawingArrow || !startPoint) return;
+        arrows.push({
+          x1: startPoint.x, y1: startPoint.y, x2: p.x, y2: p.y,
+          color: strokeColorSel.value, width: parseInt(strokeWidthSel.value,10) || 5,
+          dashed: !!dashedToggle.checked
+        });
+        startPoint = null; drawingArrow = false; saveArrows(); renderDraw();
+      } else {
+        if (!drawingStroke || !currentStroke) return;
+        drawingStroke = false;
+        saveStrokes(); renderDraw();
+      }
+      e.preventDefault();
+    }, {passive:false});
+
+    // Persistencia
+    function savePositions(){
+      const data = [...playersLayer.children].map(el => ({
+        team: el.dataset.team, number: +el.dataset.number,
+        x: parseFloat(el.style.left), y: parseFloat(el.style.top)
+      }));
+      localStorage.setItem('rugby-positions-v3', JSON.stringify(data));
+    }
+    function loadPositions(){
+      try{
+        const arr = JSON.parse(localStorage.getItem('rugby-positions-v3')||'null');
+        if (Array.isArray(arr) && arr.length===30){
+          playersLayer.innerHTML='';
+          arr.forEach(p=>{
+            const el=document.createElement('div');
+            el.className=`player ${p.team}`; el.textContent=p.number;
+            el.dataset.number=p.number; el.dataset.team=p.team;
+            el.style.left=p.x+'px'; el.style.top=p.y+'px';
+            // NO fijamos transform aquí
+            enableDragPlayer(el, () => { savePositions(); if (autoRecordChk.checked) recordFrame(); });
+            playersLayer.appendChild(el);
+          });
+          applyUprightTransforms();
+        }
+      }catch{}
+    }
+    function saveArrows(){ localStorage.setItem('rugby-arrows-v3', JSON.stringify(arrows)); }
+    function loadArrows(){ try{ arrows = JSON.parse(localStorage.getItem('rugby-arrows-v3')||'[]'); }catch{ arrows = []; } }
+    function saveStrokes(){ localStorage.setItem('rugby-strokes-v1', JSON.stringify(strokes)); }
+    function loadStrokes(){ try{ strokes = JSON.parse(localStorage.getItem('rugby-strokes-v1')||'[]'); }catch{ strokes = []; } }
+
+    // ---- TIMELINE ----
+    let timeline = [];
+    let playing = false, paused = false, playIndex = 0, rafId = null;
+    let segmentStartTime = 0, segmentDuration = 800;
+    let fromFrame = null, toFrame = null;
+    const TL_KEY = 'rugby-timeline-v2';
+
+    function updateFrameCount(){
+      frameCountEl.textContent = timeline.length;
+      frameTotal.textContent = Math.max(0, timeline.length - 1);
+      scrubber.max = Math.max(0, timeline.length - 1);
+      if (parseInt(scrubber.value,10) > scrubber.max) scrubber.value = scrubber.max;
+      scrubberVal.textContent = scrubber.value;
+    }
+
+    function snapshotPlayers(){ return [...playersLayer.children].map(el => ({ team: el.dataset.team, number: +el.dataset.number, x: parseFloat(el.style.left), y: parseFloat(el.style.top) })); }
+    function snapshotBall(){ return { x: parseFloat(ball.style.left)||WIDTH/2, y: parseFloat(ball.style.top)||HEIGHT/2 }; }
+    function snapshotFrame(){ return { players: snapshotPlayers(), ball: snapshotBall() }; }
+
+    function recordFrame(){ timeline.push(snapshotFrame()); saveTimeline(); updateFrameCount(); }
+    function saveTimeline(){ localStorage.setItem(TL_KEY, JSON.stringify(timeline)); }
+    function loadTimeline(){
+      try{
+        const arr = JSON.parse(localStorage.getItem(TL_KEY)||'[]');
+        timeline = Array.isArray(arr) ? arr.map(f => Array.isArray(f) ? { players:f, ball: snapshotBall() } : f) : [];
+      }catch{ timeline = []; }
+      updateFrameCount();
+    }
+    function clearTimeline(){ timeline = []; saveTimeline(); updateFrameCount(); stopPlayback(); }
+
+    function setFromFrame(frame){
+      frame.players.forEach(p => {
+        const el = [...playersLayer.children].find(e => e.dataset.team===p.team && +e.dataset.number===p.number);
+        if (el){ el.style.left = p.x + 'px'; el.style.top  = p.y + 'px'; }
+      });
+      if (frame.ball){ ball.style.left = frame.ball.x + 'px'; ball.style.top  = frame.ball.y + 'px'; }
+      savePositions(); saveBall();
+    }
+    function lerp(a,b,t){ return a + (b - a) * t; }
+    function toMap(frame){ const m = new Map(); frame.players.forEach(p => m.set(p.team + '#' + p.number, p)); return m; }
+
+    function animateSegment(now){
+      if (!playing || paused) { rafId = requestAnimationFrame(animateSegment); return; }
+      const elapsed = now - segmentStartTime;
+      const u = Math.max(0, Math.min(1, elapsed / segmentDuration));
+      const A = toMap(fromFrame); const B = toMap(toFrame);
+
+      [...playersLayer.children].forEach(el => {
+        const key = el.dataset.team + '#' + el.dataset.number;
+        const pa = A.get(key) || { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+        const pb = B.get(key) || pa;
+        el.style.left = lerp(pa.x, pb.x, u) + 'px';
+        el.style.top  = lerp(pa.y, pb.y, u) + 'px';
+      });
+
+      ball.style.left = lerp(fromFrame.ball.x, toFrame.ball.x, u) + 'px';
+      ball.style.top  = lerp(fromFrame.ball.y, toFrame.ball.y, u) + 'px';
+
+      if (u >= 1) {
+        playIndex++;
+        scrubber.value = playIndex; scrubberVal.textContent = scrubber.value;
+        if (playIndex >= timeline.length - 1) { playing = false; cancelAnimationFrame(rafId); rafId = null; return; }
+        fromFrame = timeline[playIndex]; toFrame = timeline[playIndex+1]; segmentStartTime = performance.now();
+      }
+      rafId = requestAnimationFrame(animateSegment);
+    }
+
+    function playTimeline(){
+      if (timeline.length < 2) { alert('Necesitás al menos 2 pasos grabados.'); return; }
+      segmentDuration = Math.max(100, parseInt(speedInput.value||800,10));
+      if (!paused){
+        playIndex = parseInt(scrubber.value,10) || 0;
+        if (playIndex >= timeline.length - 1) playIndex = 0;
+        fromFrame = timeline[playIndex]; toFrame = timeline[playIndex+1];
+        setFromFrame(fromFrame);
+      }
+      paused = false; playing = true; segmentStartTime = performance.now();
+      if (!rafId) rafId = requestAnimationFrame(animateSegment);
+    }
+    function pauseTimeline(){ if (!playing) return; paused = true; }
+    function stopPlayback(){ playing = false; paused = false; if (rafId){ cancelAnimationFrame(rafId); rafId = null; } }
+
+    // UI Animación
+    recordStepBtn.addEventListener('click', recordFrame);
+    playBtn.addEventListener('click', playTimeline);
+    pauseBtn.addEventListener('click', pauseTimeline);
+    stopBtn.addEventListener('click', stopPlayback);
+    clearTimelineBtn.addEventListener('click', clearTimeline);
+
+    exportTimelineBtn.addEventListener('click', async ()=>{
+      try{ await navigator.clipboard.writeText(JSON.stringify(timeline)); alert('Timeline copiada.'); }
+      catch{ alert('No se pudo copiar.'); }
+    });
+    importTimelineBtn.addEventListener('click', ()=>{
+      const txt = prompt('Pegá el JSON de la timeline:'); if (!txt) return;
+      try{ const arr = JSON.parse(txt); if (Array.isArray(arr)){ timeline = arr.map(f => Array.isArray(f) ? { players:f, ball:snapshotBall() } : f); saveTimeline(); updateFrameCount(); alert('Timeline importada.'); } else { alert('Formato inválido.'); } }
+      catch(e){ alert('JSON inválido.'); }
+    });
+
+    // Scrubber
+    function gotoFrame(idx){
+      if (!timeline.length) return;
+      idx = Math.max(0, Math.min(timeline.length - 1, idx));
+      stopPlayback(); scrubber.value = idx; scrubberVal.textContent = scrubber.value; setFromFrame(timeline[idx]);
+    }
+    scrubber.addEventListener('input', () => gotoFrame(parseInt(scrubber.value,10)));
+    prevFrameBtn.addEventListener('click', () => gotoFrame(parseInt(scrubber.value,10) - 1));
+    nextFrameBtn.addEventListener('click', () => gotoFrame(parseInt(scrubber.value,10) + 1));
+
+    // Giocate CRUD
+    function refreshPlayList(){
+      const sel = loadPlaySel; if (!sel) return; sel.innerHTML='';
+      const keys = Object.keys(localStorage).filter(k=>k.startsWith('play-v3-')).sort();
+      keys.forEach(k=>{ const opt=document.createElement('option'); opt.value=k; opt.textContent=k.replace('play-v3-',''); sel.appendChild(opt); });
+    }
+    savePlayBtn.onclick = () => {
+      const name = (playNameInput.value||'').trim(); if (!name) { alert('Dai un nome alla giocata.'); return; }
+      const payload = { positions: snapshotPlayers(), arrows, strokes, timeline };
+      localStorage.setItem('play-v3-'+name, JSON.stringify(payload)); refreshPlayList(); loadPlaySel.value = 'play-v3-'+name;
+      alert('Giocata salvata con animazione.');
+    };
+    duplicatePlayBtn.onclick = () => {
+      const key = loadPlaySel.value; if (!key) { alert('Seleziona una giocata da duplicare.'); return; }
+      const base = key.replace('play-v3-',''); let i=1, newName;
+      do { newName = base + ' (copia '+i+')'; i++; } while(localStorage.getItem('play-v3-'+newName));
+      localStorage.setItem('play-v3-'+newName, localStorage.getItem(key)); refreshPlayList(); loadPlaySel.value = 'play-v3-'+newName; playNameInput.value = newName;
+    };
+    deletePlayBtn.onclick = () => { const key = loadPlaySel.value; if (!key) return; if (!confirm('Eliminar?')) return; localStorage.removeItem(key); refreshPlayList(); };
+    loadPlaySel.onchange = () => {
+      const data = JSON.parse(localStorage.getItem(loadPlaySel.value)||'null'); if (!data) return;
+      playersLayer.innerHTML='';
+      (data.positions||[]).forEach(p=>{
+        const el=document.createElement('div'); el.className=`player ${p.team}`; el.textContent=p.number;
+        el.dataset.number=p.number; el.dataset.team=p.team;
+        el.style.left=p.x+'px'; el.style.top=p.y+'px';
+        enableDragPlayer(el, () => { savePositions(); if (autoRecordChk.checked) recordFrame(); });
+        playersLayer.appendChild(el);
+      });
+      applyUprightTransforms();
+      arrows = data.arrows||[]; strokes = data.strokes||[];
+      timeline = Array.isArray(data.timeline) ? data.timeline.map(f => Array.isArray(f) ? { players:f, ball:snapshotBall() } : f) : [];
+      savePositions(); saveArrows(); saveStrokes(); saveTimeline();
+      updateFrameCount(); renderDraw();
+      alert('Giocata carregata' + (timeline.length ? ' con animazione.' : '.'));
+      if (timeline.length) gotoFrame(0);
+    };
+
+    // Etiquetas
+    toggleLabelsBtn.onclick = () => {
+      const showing = playersLayer.classList.toggle('showing-labels');
+      toggleLabelsBtn.textContent = showing ? 'Nascondi etichette' : 'Mostra etichette';
+      [...playersLayer.children].forEach(el => showing ? el.title = (el.dataset.team==='blue'?'Blu ':'Rosso ') + el.dataset.number : el.removeAttribute('title'));
+    };
+
+    // Herramientas dibujo
+    function setTool(next){
+      tool = next;
+      if (tool === 'arrows'){ toolArrowsBtn.textContent = 'Frecce: Attivo'; toolPenBtn.textContent = 'Matita: Inattiva'; }
+      else { toolArrowsBtn.textContent = 'Frecce: Inattivo'; toolPenBtn.textContent = 'Matita: Attiva'; }
+    }
+    toolArrowsBtn.onclick = () => setTool('arrows');
+    toolPenBtn.onclick = () => setTool('pen');
+    undoGenericBtn.onclick = () => { if (tool === 'arrows') { arrows.pop(); saveArrows(); } else { strokes.pop(); saveStrokes(); } renderDraw(); };
+    clearArrowsBtn.onclick = () => { arrows = []; saveArrows(); renderDraw(); };
+    clearAllBtn.onclick = () => { arrows = []; strokes = []; saveArrows(); saveStrokes(); renderDraw(); };
+    snapToggle.addEventListener('change', renderGrid);
+
+    /* ==============================
+       EXPORT: CANVAS 2D + WebM + MP4
+       ============================== */
+    function drawPitch(ctx){
+      ctx.fillStyle = '#137a46'; ctx.fillRect(0,0,WIDTH,HEIGHT);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.strokeRect(5,5,1190,690);
+      ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fillRect(0,0,80,700); ctx.fillRect(1120,0,80,700);
+      function vline(x,w=4,dash=null){ ctx.save(); ctx.beginPath(); if(dash)ctx.setLineDash(dash); ctx.moveTo(x,0); ctx.lineTo(x,HEIGHT); ctx.lineWidth=w; ctx.stroke(); ctx.restore(); }
+      function hline(y,w=2,dash=[4,8]){ ctx.save(); ctx.beginPath(); if(dash)ctx.setLineDash(dash); ctx.moveTo(5,y); ctx.lineTo(1195,y); ctx.lineWidth=w; ctx.stroke(); ctx.restore(); }
+      vline(80,4); vline(1120,4); vline(309,3); vline(891,3); vline(500,2,[8,10]); vline(697,2,[8,10]); vline(600,4);
+      hline(50); hline(150); hline(550); hline(650); vline(130,2,[8,10]); vline(1070,2,[8,10]);
+    }
+    function drawPlayer(ctx, p){
+      const r=20; ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
+      ctx.fillStyle = p.team==='blue' ? '#0d6efd' : '#e63946'; ctx.fill();
+      ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
+      ctx.fillStyle='#fff'; ctx.font='700 14px system-ui,-apple-system,Segoe UI,Roboto,Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.number,p.x,p.y);
+    }
+    function drawBall(ctx, b){
+      ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(-15*Math.PI/180);
+      ctx.beginPath(); ctx.ellipse(0,0,25,15,0,0,Math.PI*2); ctx.fillStyle='#ffd400'; ctx.fill();
+      ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
+      ctx.setLineDash([4,6]); ctx.lineWidth=2; ctx.strokeStyle='rgba(0,0,0,.25)';
+      ctx.beginPath(); ctx.ellipse(0,0,15,9,0,0,Math.PI*2); ctx.stroke(); ctx.restore();
+    }
+    function drawStroke(ctx, s){
+      const pts = s.points.map(pt => pt.split(',').map(Number)); if (pts.length<2) return;
+      ctx.save(); ctx.beginPath(); if (s.dashed) ctx.setLineDash([8,8]); ctx.lineWidth=s.width||5; ctx.strokeStyle=s.color||'#f4d35e';
+      ctx.moveTo(pts[0][0], pts[0][1]); for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke(); ctx.restore();
+    }
+    function drawArrow(ctx, a){
+      ctx.save(); ctx.beginPath(); if(a.dashed) ctx.setLineDash([8,8]); ctx.lineWidth=a.width||5; ctx.strokeStyle=a.color||'#f4d35e';
+      ctx.moveTo(a.x1,a.y1); ctx.lineTo(a.x2,a.y2); ctx.stroke();
+      const ang=Math.atan2(a.y2-a.y1,a.x2-a.x1), head=12+(a.width||5);
+      ctx.beginPath(); ctx.moveTo(a.x2,a.y2);
+      ctx.lineTo(a.x2-head*Math.cos(ang-Math.PI/6), a.y2-head*Math.sin(ang-Math.PI/6));
+      ctx.lineTo(a.x2-head*Math.cos(ang+Math.PI/6), a.y2-head*Math.sin(ang+Math.PI/6));
+      ctx.closePath(); ctx.fillStyle=a.color||'#f4d35e'; ctx.fill(); ctx.restore();
+    }
+
+    function getCurrentPlayersFromDOM(){ return [...playersLayer.children].map(el => ({ team: el.dataset.team, number:+el.dataset.number, x: parseFloat(el.style.left), y: parseFloat(el.style.top) })); }
+    function getCurrentBallFromDOM(){ return { x: parseFloat(ball.style.left)||WIDTH/2, y: parseFloat(ball.style.top)||HEIGHT/2 }; }
+    function renderFrameToCanvas(playersArr, ballPos, includeOverlays=true){
+      ctx.clearRect(0,0,WIDTH,HEIGHT); drawPitch(ctx);
+      playersArr.forEach(p => drawPlayer(ctx,p)); drawBall(ctx,ballPos);
+      if (includeOverlays){ strokes.forEach(s=>drawStroke(ctx,s)); arrows.forEach(a=>drawArrow(ctx,a)); }
+    }
+
+    // Export JPG del frame actual
+    exportJpgBtn.addEventListener('click', () => {
+      const playersNow = getCurrentPlayersFromDOM();
+      const ballNow = getCurrentBallFromDOM();
+      renderFrameToCanvas(playersNow, ballNow, true);
+      const url = exportCanvas.toDataURL('image/jpeg', 0.95);
+      const a = document.createElement('a'); a.href = url; a.download = (playNameInput.value?.trim() || 'lavagna') + '_frame.jpg'; document.body.appendChild(a); a.click(); a.remove();
+    });
+
+    // Export video WebM (timeline completa)
+    async function exportWebMBlob(){
+      if (timeline.length < 2){ alert('Necesitás al menos 2 frames.'); throw new Error('No frames'); }
+      const fps = 30, msPerFrame = 1000 / fps;
+      const stream = exportCanvas.captureStream(fps);
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+      const chunks = [];
+      recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+      const done = new Promise(res => recorder.onstop = res);
+
+      const segMs = Math.max(100, parseInt(speedInput.value||800,10));
+      const stepsPerSeg = Math.max(1, Math.round(segMs / msPerFrame));
+
+      // Primer frame para fijar tamaño
+      const first = timeline[0];
+      renderFrameToCanvas(first.players, first.ball, true);
+      await new Promise(r => setTimeout(r, msPerFrame));
+
+      recorder.start();
+
+      for (let i=0;i<timeline.length-1;i++){
+        const A = timeline[i], B = timeline[i+1];
+        const mapA = new Map(A.players.map(p=>[p.team+'#'+p.number, p]));
+        const mapB = new Map(B.players.map(p=>[p.team+'#'+p.number, p]));
+        for (let s=0; s<stepsPerSeg; s++){
+          const t = s / stepsPerSeg;
+          const playersInterp = [];
+          for (const [key, pa] of mapA.entries()){
+            const pb = mapB.get(key) || pa;
+            playersInterp.push({ team:key.split('#')[0], number:+key.split('#')[1], x: lerp(pa.x,pb.x,t), y: lerp(pa.y,pb.y,t) });
+          }
+          const ballInterp = { x: lerp(A.ball.x,B.ball.x,t), y: lerp(A.ball.y,B.ball.y,t) };
+          renderFrameToCanvas(playersInterp, ballInterp, true);
+          await new Promise(r => setTimeout(r, msPerFrame));
+        }
+      }
+      const last = timeline[timeline.length-1];
+      renderFrameToCanvas(last.players, last.ball, true);
+      await new Promise(r => setTimeout(r, msPerFrame));
+
+      recorder.stop(); await done;
+      return new Blob(chunks, { type: 'video/webm' });
+    }
+
+    exportVideoBtn.addEventListener('click', async () => {
+      try{
+        const webmBlob = await exportWebMBlob();
+        const url = URL.createObjectURL(webmBlob);
+        const a = document.createElement('a'); a.href = url; a.download = (playNameInput.value?.trim() || 'lavagna') + '_animazione.webm';
+        document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 500);
+      }catch(e){ console.error(e); }
+    });
+
+    // MP4 con ffmpeg.wasm
+    let ffmpegInstance = null;
+    async function ensureFFmpeg(){
+      if (ffmpegInstance) return ffmpegInstance;
+      ffmpegStatus.textContent = 'Cargando FFmpeg…';
+      const { createFFmpeg, fetchFile } = FFmpeg;
+      const ffmpeg = createFFmpeg({ log: false, corePath: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js' });
+      await ffmpeg.load();
+      ffmpegInstance = { ffmpeg, fetchFile };
+      ffmpegStatus.textContent = 'FFmpeg listo.';
+      return ffmpegInstance;
+    }
+
+    exportMp4Btn.addEventListener('click', async ()=>{
+      try{
+        const webmBlob = await exportWebMBlob();
+        const { ffmpeg, fetchFile } = await ensureFFmpeg();
+        ffmpegStatus.textContent = 'Convirtiendo a MP4…';
+        ffmpeg.FS('writeFile', 'input.webm', await fetchFile(webmBlob));
+        await ffmpeg.run('-i', 'input.webm', '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-pix_fmt', 'yuv420p', 'output.mp4');
+        const data = ffmpeg.FS('readFile', 'output.mp4');
+        const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+        const url = URL.createObjectURL(mp4Blob);
+        const a = document.createElement('a'); a.href = url; a.download = (playNameInput.value?.trim() || 'lavagna') + '_animazione.mp4';
+        document.body.appendChild(a); a.click();
+        setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); ffmpegStatus.textContent = 'MP4 listo.'; }, 500);
+        try{ ffmpeg.FS('unlink','input.webm'); ffmpeg.FS('unlink','output.mp4'); }catch{}
+      }catch(err){
+        console.error(err);
+        ffmpegStatus.textContent = 'No se pudo convertir a MP4 en este navegador. Usá el WebM, o te habilito otra opción.';
+        alert('Si falla MP4, descargá el WebM; puedo sumar otra ruta de conversión.');
+      }
+    });
+
+    // ===== INIT =====
+    function renderGridInit(){ renderGrid(); }
+    function enableDragBallSave(){ enableDragBall(() => { saveBall(); if (autoRecordChk.checked) recordFrame(); }); }
+
+    function init(){
+      renderGridInit(); setTool('arrows');
+      createPlayers(); loadPositions();
+      loadArrows(); loadStrokes(); renderDraw();
+      placeBall(WIDTH/2, HEIGHT/2); loadBall();
+      loadTimeline(); updateFrameCount();
+      fitBoard(); requestAnimationFrame(fitBoard);
+      if (!timeline.length) { recordFrame(); updateFrameCount(); }
+      gotoFrame(0);
+    }
+
+    enableDragBallSave();
+    init();
+  </script>
+</body>
+</html>
