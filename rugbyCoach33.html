@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Rugby Technical Coach</title>
+  <title>Lavagna di Rugby — Animazione + Export JPG/WebM/MP4 + Campo Vertical</title>
   <style>
     :root {
       --sidebar-w: 360px;
@@ -1537,77 +1537,26 @@ dom.exportJpgBtn.addEventListener('click', async () => {
             });
 
             // Lógica de exportación MP4 con FFmpeg... (Mantenida sin cambios en la parte FFmpeg)
-            dom.exportMp4Btn.addEventListener('click', async () => {
-                // ... (código FFmpeg se asume correcto, solo se actualiza la llamada a renderFrameToCanvas)
-                if (appState.timeline.length < 2) { alert('Añade al menos 2 frames a la animación para exportar video.'); return; }
-                dom.exportMp4Btn.textContent = 'Iniciando FFmpeg...';
-                dom.exportMp4Btn.disabled = true;
+            dom.exportMp4Btn.addEventListener('click', () => {
+  // Exportación MP4 en PÁGINA SEPARADA para no congelar la app
+  const win = window.open('exporter_mp4.html', '_blank', 'noopener');
+  if (!win) { alert('No pude abrir el exportador (popup bloqueado). Permití popups para este sitio.'); return; }
+  const payload = {
+    timeline: appState.timeline,
+    width: WIDTH,
+    height: HEIGHT,
+    segmentDuration: (isNaN(appState.segmentDuration) ? 800 : appState.segmentDuration),
+    name: (dom.playNameInput?.value?.trim() || 'lavagna')
+  };
+  function onReady(e){
+    if (e.source === win && e.data === 'EXPORTER_READY'){
+      window.removeEventListener('message', onReady);
+      win.postMessage(payload, '*');
+    }
+  }
+  window.addEventListener('message', onReady);
+});
 
-                const duration = parseInt(dom.speedInput.value);
-                const fps = Math.max(1, Math.floor(1000 / duration)); // Calcular FPS basándose en la duración de cada frame
-
-                if (!window.FFmpeg || typeof FFmpeg.createFFmpeg !== 'function') {
-                    alert('FFmpeg no está cargado. Usa "Exportar video (WebM)" (recomendado) o añade ffmpeg.wasm para habilitar MP4.');
-                    dom.exportMp4Btn.textContent = 'Exportar MP4 (requiere ffmpeg.wasm)';
-                    dom.exportMp4Btn.disabled = false;
-                    dom.ffmpegStatus.textContent = '';
-                    return;
-                }
-                const { createFFmpeg, fetchFile } = FFmpeg;
-                const ffmpeg = createFFmpeg({ log: false });
-                
-                try{
-                    dom.ffmpegStatus.textContent = 'Cargando núcleo FFmpeg (esto puede tardar la primera vez)...';
-                    await ffmpeg.load();
-                    dom.ffmpegStatus.textContent = 'Generando frames...';
-
-                    const totalFrames = appState.timeline.length;
-                    for(let i=0; i<totalFrames; i++){
-                        const frameData = appState.timeline[i];
-                        await ExportManager.renderFrameToCanvas(frameData.players, frameData.ball, true);
-                        const dataURL = dom.exportCanvas.toDataURL('image/jpeg', 0.95);
-                        const base64 = dataURL.split(',')[1];
-                        const binary = atob(base64);
-                        const array = new Uint8Array(binary.length);
-                        for (let j = 0; j < binary.length; j++) {
-                            array[j] = binary.charCodeAt(j);
-                        }
-                        ffmpeg.FS('writeFile', `frame_${String(i).padStart(4, '0')}.jpg`, array);
-                        dom.ffmpegStatus.textContent = `Generando frames: ${i + 1}/${totalFrames}`;
-                    }
-
-                    dom.ffmpegStatus.textContent = 'Codificando MP4 (puede tardar)...';
-                    dom.exportMp4Btn.textContent = 'Codificando...';
-
-                    // ffmpeg -framerate 1 -i frame_%04d.jpg -c:v libx264 -pix_fmt yuv420p output.mp4
-                    const inputPattern = `frame_%04d.jpg`;
-                    const outputName = 'output.mp4';
-                    
-                    await ffmpeg.run('-framerate', String(fps), '-i', inputPattern, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', outputName);
-                    
-                    const data = ffmpeg.FS('readFile', outputName);
-                    const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
-                    const url = URL.createObjectURL(mp4Blob);
-                    const a = document.createElement('a'); a.href = url; a.download = (dom.playNameInput.value?.trim() || 'lavagna') + '_animazione.mp4';
-                    document.body.appendChild(a); a.click();
-                    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); dom.ffmpegStatus.textContent = 'MP4 listo.'; }, 500);
-
-                    // Limpieza
-                    for(let i=0; i<totalFrames; i++){
-                        try{ ffmpeg.FS('unlink',`frame_${String(i).padStart(4, '0')}.jpg`); }catch{}
-                    }
-                    try{ ffmpeg.FS('unlink','output.mp4'); }catch{}
-
-                }catch(err){
-                    console.error(err);
-                    dom.ffmpegStatus.textContent = 'No se pudo convertir a MP4 en este navegador. Usá el WebM.';
-                    alert('Si falla MP4, descargá el WebM; puedo sumar otra ruta de conversión.');
-                } finally {
-                    dom.exportMp4Btn.textContent = 'Exportar MP4 (beta)';
-                    dom.exportMp4Btn.disabled = false;
-                    TimelineManager.loadFrame(0); // Vuelve al frame 0
-                }
-            });
         },
     };
 
@@ -1700,4 +1649,3 @@ UIManager.setupEventListeners();
   </script>
 </body>
 </html>
-
