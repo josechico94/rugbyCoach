@@ -36,12 +36,16 @@
     .btn { cursor: pointer; text-align: center; }
     .btn:hover { filter: brightness(1.08); }
     .btn.alt { background: #0e2235; }
+    /* Nuevo estilo para indicar herramienta activa */
+    .btn.active { background: var(--blue); border-color: var(--blue); }
+
     small.note { opacity:.8 }
     .legend { display:flex; align-items:center; gap:8px; font-size: 13px; }
     .swatch { width: .9em; height: .9em; border-radius: 50%; display:inline-block; }
 
     .stage { position: relative; display: grid; place-items: center; padding: 16px; overflow: hidden; }
-    .board-viewport { position: relative; width:100%; height:100%; display:grid; place-items:center; contain: layout paint; }
+    /* CORRECCIÓN: Quitamos display:grid y place-items:center para evitar conflicto con la traducción JS */
+    .board-viewport { position: relative; width:100%; height:100%; contain: layout paint; }
     .board-wrap { position: absolute; width: 1200px; height: 700px; transform-origin: top left; }
     .board { position: absolute; inset: 0; background: #137a46; overflow: hidden; border-radius: 18px; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
 
@@ -59,6 +63,9 @@
 
     #players { position:absolute; inset:0; z-index:3; pointer-events:none; }
     .player { pointer-events:auto; position:absolute; width:40px; height:40px; border-radius:50%; display:grid; place-items:center; font-weight:700; font-size:14px; color:#fff; cursor:grab; border:2px solid #fff; box-shadow: var(--shadow); }
+    /* Cursor grabbing al arrastrar */
+    .player:active, #ball:active { cursor: grabbing !important; }
+    
     #ball { position:absolute; z-index:4; }
     .blue { background: var(--blue); } .red { background: var(--red); }
 
@@ -80,10 +87,16 @@
       .close-drawer { display:inline-grid; place-items:center; }
       .hamburger { display:inline-grid; }
       .stage { padding:0; }
-      .board-viewport { position: fixed; top: calc(56px + env(safe-area-inset-top)); left:0; right:0; bottom:0; overflow:hidden; display:grid; place-items:center; }
+      .board-viewport { 
+        position: fixed; 
+        top: 0; 
+        left:0; right:0; bottom:0; 
+        overflow:hidden; 
+        /* CORRECCIÓN: Quitamos display:grid y place-items:center */
+        background: #0b1720;
+      }
     }
   </style>
-  <!-- FFmpeg.wasm UMD -->
   <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.min.js"></script>
 </head>
 <body>
@@ -114,7 +127,7 @@
       <div class="group">
         <strong>Disegno</strong>
         <div class="row" style="grid-template-columns: 1fr 1fr;">
-          <button class="btn" id="toolArrows">Frecce: Attivo</button>
+          <button class="btn active" id="toolArrows">Frecce: Attivo</button>
           <button class="btn alt" id="toolPen">Matita: Inattiva</button>
         </div>
         <div class="row" style="grid-template-columns: 1fr 1fr;">
@@ -136,7 +149,7 @@
           </label>
         </div>
         <label class="chk" style="border:none;background:transparent;padding:0;box-shadow:none">
-          <input type="checkbox" id="dashedToggle"> Linea tratteggiata
+          <input type="checkbox" id="dashedToggle"> Linea tratteggiada
         </label>
         <div class="row" style="grid-template-columns: 1fr 1fr;">
           <button class="btn" id="undoGeneric">Annulla</button>
@@ -147,13 +160,13 @@
 
       <div class="group">
         <strong>Giocate</strong>
-        <input type="text" id="playName" placeholder="Nome giocata" />
+        <input type="text" id="playName" placeholder="Nome giocada" />
         <div class="row" style="grid-template-columns: 1fr 1fr;">
           <button class="btn" id="savePlay">Salva</button>
           <button class="btn alt" id="duplicatePlay">Duplica</button>
         </div>
         <select id="loadPlay"></select>
-        <button class="btn" id="deletePlay">Elimina giocata</button>
+        <button class="btn" id="deletePlay">Elimina giocada</button>
       </div>
 
       <div class="group">
@@ -238,879 +251,1452 @@
           </div>
         </div>
       </div>
-      <!-- Canvas de exportación (no visible) -->
-      <canvas id="exportCanvas" width="1200" height="700" style="display:none"></canvas>
+      <canvas id="exportCanvas" width="1200" height="700" style="position:fixed; top:-9999px; left:-9999px;"></canvas>
     </main>
   </div>
 
   <script>
+    // --- CONSTANTES GLOBALES ---
     const WIDTH = 1200, HEIGHT = 700;
     const GRID_SIZE = 24;
-
-    // DOM
-    const boardViewport = document.getElementById('boardViewport');
-    const boardWrap = document.getElementById('boardWrap');
-    const board = document.getElementById('board');
-    const playersLayer = document.getElementById('players');
-    const draw = document.getElementById('draw');
-    const gridSvg = document.getElementById('grid');
-    const ball = document.getElementById('ball');
-    const exportCanvas = document.getElementById('exportCanvas');
-    const ctx = exportCanvas.getContext('2d');
-
-    // Sidebar
-    const sidebar = document.getElementById('sidebar');
-    const menuBtn = document.getElementById('menuBtn');
-    const closeMenuBtn = document.getElementById('closeMenu');
-    const scrim = document.getElementById('scrim');
-
-    // UI disegno
-    const toggleLabelsBtn = document.getElementById('toggleLabels');
-    const resetBtn = document.getElementById('reset');
-    const snapToggle = document.getElementById('snapToggle');
-    const verticalFieldChk = document.getElementById('verticalField');
-
-    const toolArrowsBtn = document.getElementById('toolArrows');
-    const toolPenBtn = document.getElementById('toolPen');
-    const undoGenericBtn = document.getElementById('undoGeneric');
-    const clearArrowsBtn = document.getElementById('clearArrows');
-    const clearAllBtn = document.getElementById('clearAll');
-    const strokeColorSel = document.getElementById('strokeColor');
-    const strokeWidthSel = document.getElementById('strokeWidth');
-    const dashedToggle = document.getElementById('dashedToggle');
-
-    // Export
-    const exportJpgBtn = document.getElementById('exportJpgBtn');
-    const exportVideoBtn = document.getElementById('exportVideoBtn');
-    const exportMp4Btn = document.getElementById('exportMp4Btn');
-    const ffmpegStatus = document.getElementById('ffmpegStatus');
-
-    // GIOCATE
-    const playNameInput = document.getElementById('playName');
-    const loadPlaySel = document.getElementById('loadPlay');
-    const savePlayBtn = document.getElementById('savePlay');
-    const duplicatePlayBtn = document.getElementById('duplicatePlay');
-    const deletePlayBtn = document.getElementById('deletePlay');
-
-    // ANIMACIÓN – UI
-    const recordStepBtn = document.getElementById('recordStepBtn');
-    const autoRecordChk = document.getElementById('autoRecord');
-    const playBtn = document.getElementById('playBtn');
-    const pauseBtn = document.getElementById('pauseBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const speedInput = document.getElementById('speedInput');
-    const clearTimelineBtn = document.getElementById('clearTimelineBtn');
-    const exportTimelineBtn = document.getElementById('exportTimelineBtn');
-    const importTimelineBtn = document.getElementById('importTimelineBtn');
-    const frameCountEl = document.getElementById('frameCount');
-
-    // Scrubber
-    const scrubber = document.getElementById('scrubber');
-    const scrubberVal = document.getElementById('scrubberVal');
-    const frameTotal = document.getElementById('frameTotal');
-    const prevFrameBtn = document.getElementById('prevFrameBtn');
-    const nextFrameBtn = document.getElementById('nextFrameBtn');
-
-    // Drawer
-    function openMenu(){ sidebar.classList.add('open'); scrim.classList.add('show'); }
-    function closeMenu(){ sidebar.classList.remove('open'); scrim.classList.remove('show'); }
-    menuBtn.addEventListener('click', openMenu);
-    closeMenuBtn.addEventListener('click', closeMenu);
-    scrim.addEventListener('click', closeMenu);
-    window.addEventListener('resize', ()=>{ if (window.innerWidth > 900) closeMenu(); });
-
-    // ---- Layout / Campo vertical ----
-    const layout = { mode:'landscape', scale:1, tx:0, ty:0 };
-    let forceVertical = false; // override manual
-
-    function isPortraitLike(){
-      if (forceVertical) return true;
-      const mq = window.matchMedia('(orientation: portrait)');
-      return (mq && mq.matches) || (window.innerHeight > window.innerWidth);
-    }
-
-    // Rotar jugadores (y opcional balón) para que se lean derechos en campo vertical
-    function applyUprightTransforms(){
-      const rotatePlayers = (layout.mode === 'portrait');
-      [...playersLayer.children].forEach(el => {
-        el.style.transform = rotatePlayers
-          ? 'translate(-50%, -50%) rotate(-90deg)'
-          : 'translate(-50%, -50%)';
-      });
-      // Si querés enderezar también el balón, descomenta esto:
-      // if (rotatePlayers) {
-      //   ball.style.transform = 'translate(-50%, -50%) rotate(-90deg) rotate(-15deg)';
-      // } else {
-      //   ball.style.transform = 'translate(-50%, -50%) rotate(-15deg)';
-      // }
-    }
-
-    function fitBoard(){
-      if (!isPortraitLike()){
-        layout.mode = 'landscape';
-        layout.scale = 1; layout.tx = 0; layout.ty = 0;
-        boardWrap.style.transform = 'translate(0px,0px) rotate(0deg) scale(1)';
-        boardWrap.style.transformOrigin = 'top left';
-        applyUprightTransforms();
-        return;
-      }
-
-      // Campo vertical rotado 90°, asegurando que se vea completo
-      layout.mode = 'portrait';
-      const vp = boardViewport.getBoundingClientRect();
-      const availW = vp.width, availH = vp.height;
-      const scale = Math.min(availW / HEIGHT, availH / WIDTH); // dimensiones del rectángulo rotado (HEIGHT x WIDTH)
-      layout.scale = scale;
-      layout.tx = (availW - HEIGHT * scale) / 2;
-      layout.ty = (availH - WIDTH  * scale) / 2;
-
-      boardWrap.style.transform = `translate(${layout.tx}px, ${layout.ty}px) rotate(90deg) scale(${layout.scale})`;
-      boardWrap.style.transformOrigin = 'top left';
-
-      applyUprightTransforms();
-    }
-    window.addEventListener('resize', fitBoard);
-    window.addEventListener('orientationchange', fitBoard);
-    verticalFieldChk.addEventListener('change', () => { forceVertical = !!verticalFieldChk.checked; fitBoard(); });
-
-    // Coord transform
-    function clientToBoard(e){
-      const vp = boardViewport.getBoundingClientRect();
-      const cx = e.clientX - vp.left;
-      const cy = e.clientY - vp.top;
-      if (layout.mode === 'portrait'){
-        const px = cx - layout.tx;
-        const py = cy - layout.ty;
-        const x = WIDTH - (py / layout.scale);
-        const y = (px / layout.scale);
-        return { x: Math.max(0, Math.min(WIDTH, x)), y: Math.max(0, Math.min(HEIGHT, y)) };
-      } else {
-        const rect = board.getBoundingClientRect();
-        const scale = rect.width / WIDTH;
-        const x = (e.clientX - rect.left) / scale;
-        const y = (e.clientY - rect.top) / scale;
-        return { x: Math.max(0, Math.min(WIDTH, x)), y: Math.max(0, Math.min(HEIGHT, y)) };
-      }
-    }
-    function deltaToBoard(dxClient, dyClient){
-      if (layout.mode === 'portrait'){
-        const dx = -dyClient / layout.scale;
-        const dy =  dxClient / layout.scale;
-        return { dx, dy };
-      } else {
-        const rect = board.getBoundingClientRect();
-        const scale = rect.width / WIDTH;
-        return { dx: dxClient / scale, dy: dyClient / scale };
-      }
-    }
-
-    // Grilla fija + snap
-    function snap(val){ return Math.round(val / GRID_SIZE) * GRID_SIZE; }
-    function renderGrid(){
-      const s = GRID_SIZE;
-      gridSvg.innerHTML='';
-      const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-      for(let x=s;x<WIDTH;x+=s){
-        const l=document.createElementNS('http://www.w3.org/2000/svg','line');
-        l.setAttribute('x1',x); l.setAttribute('y1',0); l.setAttribute('x2',x); l.setAttribute('y2',HEIGHT);
-        l.setAttribute('stroke','var(--grid)'); l.setAttribute('stroke-width','1'); g.appendChild(l);
-      }
-      for(let y=s;y<HEIGHT;y+=s){
-        const l=document.createElementNS('http://www.w3.org/2000/svg','line');
-        l.setAttribute('x1',0); l.setAttribute('y1',y); l.setAttribute('x2',WIDTH); l.setAttribute('y2',y);
-        l.setAttribute('stroke','var(--grid)'); l.setAttribute('stroke-width','1'); g.appendChild(l);
-      }
-      gridSvg.appendChild(g);
-      gridSvg.classList.toggle('active', snapToggle.checked);
-    }
-
-    // ---- Giocatori ----
-    const initialPositions = [];
-    for (let i=1;i<=15;i++) initialPositions.push({team:'blue',number:i,x: WIDTH*0.18, y: HEIGHT*(0.1 + (i-1)*(0.8/14))});
-    for (let i=1;i<=15;i++) initialPositions.push({team:'red', number:i,x: WIDTH*0.82, y: HEIGHT*(0.1 + (i-1)*(0.8/14))});
-
-    function createPlayers(){
-      playersLayer.innerHTML='';
-      initialPositions.forEach(p=>{
-        const el = document.createElement('div');
-        el.className = `player ${p.team}`;
-        el.textContent = p.number;
-        el.style.left = (p.x) + 'px';
-        el.style.top  = (p.y) + 'px';
-        // NO fijamos transform acá; lo maneja applyUprightTransforms()
-        el.dataset.number = p.number;
-        el.dataset.team = p.team;
-        enableDragPlayer(el, () => { savePositions(); if (autoRecordChk.checked) recordFrame(); });
-        playersLayer.appendChild(el);
-      });
-      applyUprightTransforms();
-    }
-
-    // ---- Pallone ----
-    function placeBall(x=WIDTH*0.5, y=HEIGHT*0.5){
-      ball.style.left = x + 'px';
-      ball.style.top  = y + 'px';
-      ball.style.transform = 'translate(-50%, -50%) rotate(-15deg)';
-    }
-    function saveBall(){ localStorage.setItem('rugby-ball-v1', JSON.stringify({ x: parseFloat(ball.style.left)||WIDTH/2, y: parseFloat(ball.style.top)||HEIGHT/2 })); }
-    function loadBall(){
-      try{
-        const b = JSON.parse(localStorage.getItem('rugby-ball-v1')||'null');
-        if (b && typeof b.x==='number' && typeof b.y==='number') placeBall(b.x, b.y);
-        else placeBall(WIDTH/2, HEIGHT/2);
-      }catch{ placeBall(WIDTH/2, HEIGHT/2); }
-    }
-
-    // Helpers
-    function dist(ax, ay, bx, by){ const dx=ax-bx, dy=ay-by; return Math.hypot(dx,dy); }
-    function centerOf(el){ return { x: parseFloat(el.style.left)||0, y: parseFloat(el.style.top)||0 }; }
-    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
-    function ballOverPlayer(playerEl, threshold=28){
-      const b = centerOf(ball);
-      const p = centerOf(playerEl);
-      return dist(b.x,b.y,p.x,p.y) < threshold;
-    }
-
-    // Pass preview
-    function setPassPreview(x1,y1,x2,y2){
-      const svg = document.getElementById('draw');
-      let line = svg.querySelector('#passPreview');
-      if (!line){
-        line = document.createElementNS('http://www.w3.org/2000/svg','line');
-        line.setAttribute('id','passPreview');
-        line.setAttribute('fill','none');
-        line.setAttribute('stroke','#ffffff');
-        line.setAttribute('stroke-width','3');
-        line.setAttribute('stroke-dasharray','10 8');
-        line.setAttribute('opacity','0.9');
-        line.setAttribute('vector-effect','non-scaling-stroke');
-        svg.appendChild(line);
-      }
-      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
-      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
-    }
-    function clearPassPreview(){
-      const svg = document.getElementById('draw');
-      const line = svg.querySelector('#passPreview');
-      if (line) line.remove();
-    }
-
-    // Arrastre de JUGADOR: con offset fijo para el balón si estaba encima
-    function enableDragPlayer(playerEl, onDrop){
-      let pointerId = null, startX=0, startY=0, origL=0, origT=0;
-      let lockBallToPlayer = false;
-      let offX = 0, offY = 0;
-
-      const onDown = e => {
-        pointerId = e.pointerId;
-        playerEl.setPointerCapture(pointerId);
-        e.preventDefault();
-        startX = e.clientX; startY = e.clientY;
-        origL = parseFloat(playerEl.style.left)||0;
-        origT = parseFloat(playerEl.style.top)||0;
-
-        lockBallToPlayer = ballOverPlayer(playerEl);
-        if (lockBallToPlayer){
-          const p0 = { x: origL, y: origT };
-          const b0 = centerOf(ball);
-          offX = b0.x - p0.x;
-          offY = b0.y - p0.y;
-        }
-
-        const onMove = ev => {
-          if (ev.pointerId !== pointerId) return;
-          ev.preventDefault();
-          const { dx, dy } = deltaToBoard(ev.clientX - startX, ev.clientY - startY);
-          let nx = clamp(origL + dx, 0, WIDTH);
-          let ny = clamp(origT + dy, 0, HEIGHT);
-          playerEl.style.left = nx + 'px';
-          playerEl.style.top  = ny + 'px';
-
-          if (lockBallToPlayer){
-            const bx = clamp(nx + offX, 0, WIDTH);
-            const by = clamp(ny + offY, 0, HEIGHT);
-            ball.style.left = bx + 'px';
-            ball.style.top  = by + 'px';
-          }
-        };
-
-        const onUp = ev => {
-          if (ev.pointerId !== pointerId) return;
-          try { playerEl.releasePointerCapture(pointerId); } catch {}
-          document.removeEventListener('pointermove', onMove);
-          document.removeEventListener('pointerup', onUp);
-
-          if (snapToggle.checked){
-            const px = snap(parseFloat(playerEl.style.left));
-            const py = snap(parseFloat(playerEl.style.top));
-            playerEl.style.left = px + 'px';
-            playerEl.style.top  = py + 'px';
-            if (lockBallToPlayer){
-              const sbx = clamp(snap(px + offX), 0, WIDTH);
-              const sby = clamp(snap(py + offY), 0, HEIGHT);
-              ball.style.left = sbx + 'px';
-              ball.style.top  = sby + 'px';
-            }
-          }
-
-          (onDrop || (()=>{}))();
-        };
-
-        document.addEventListener('pointermove', onMove, {passive:false});
-        document.addEventListener('pointerup', onUp, {passive:false});
-      };
-
-      playerEl.addEventListener('pointerdown', onDown, {passive:false});
-      playerEl.ondragstart = () => false;
-    }
-
-    // Arrastre de PALLONE: siempre solo + línea de pase temporal
-    function enableDragBall(onDrop){
-      let pointerId = null, startX=0, startY=0, origL=0, origT=0;
-      let passerEl = null;
-
-      const onDown = e => {
-        pointerId = e.pointerId;
-        ball.setPointerCapture(pointerId);
-        e.preventDefault();
-        startX = e.clientX; startY = e.clientY;
-        origL = parseFloat(ball.style.left)||0;
-        origT = parseFloat(ball.style.top)||0;
-
-        const b0 = centerOf(ball);
-        passerEl = (function(){
-          let best=null, bestD=Infinity;
-          for (const el of playersLayer.children){
-            const p = centerOf(el);
-            const d = dist(b0.x,b0.y,p.x,p.y);
-            if (d < 28 && d < bestD){ best=el; bestD=d; }
-          }
-          return best;
-        })();
-
-        if (passerEl){
-          const p = centerOf(passerEl);
-          setPassPreview(p.x,p.y,b0.x,b0.y);
-        }
-
-        const onMove = ev => {
-          if (ev.pointerId !== pointerId) return;
-          ev.preventDefault();
-          const { dx, dy } = deltaToBoard(ev.clientX - startX, ev.clientY - startY);
-          let nx = clamp(origL + dx, 0, WIDTH);
-          let ny = clamp(origT + dy, 0, HEIGHT);
-          ball.style.left = nx + 'px';
-          ball.style.top  = ny + 'px';
-
-          if (passerEl){
-            const p = centerOf(passerEl);
-            setPassPreview(p.x,p.y,nx,ny);
-          }
-        };
-
-        const onUp = ev => {
-          if (ev.pointerId !== pointerId) return;
-          try { ball.releasePointerCapture(pointerId); } catch {}
-          document.removeEventListener('pointermove', onMove);
-          document.removeEventListener('pointerup', onUp);
-
-          if (snapToggle.checked){
-            ball.style.left = snap(parseFloat(ball.style.left)) + 'px';
-            ball.style.top  = snap(parseFloat(ball.style.top)) + 'px';
-          }
-
-          clearPassPreview();
-          (onDrop || (()=>{}))();
-        };
-
-        document.addEventListener('pointermove', onMove, {passive:false});
-        document.addEventListener('pointerup', onUp, {passive:false});
-      };
-
-      ball.addEventListener('pointerdown', onDown, {passive:false});
-      ball.ondragstart = () => false;
-    }
-
-    enableDragBall(() => { saveBall(); if (autoRecordChk.checked) recordFrame(); });
-
-    // ---- Disegno: frecce + matita ----
-    let tool = 'arrows';
-    let drawingArrow = false;
-    let startPoint = null;
-    let arrows = [];
-    let drawingStroke = false;
-    let currentStroke = null;
-    let strokes = [];
-
-    function markerId(color){
-      const map = {'#ffffff':'arrowWhite','#35d07f':'arrowGreen','#0d6efd':'arrowBlue','#e63946':'arrowRed','#f4d35e':'arrowYellow'};
-      return map[color] || 'arrowYellow';
-    }
-    function ensureMarkers(){
-      if (draw.querySelector('defs')) return;
-      const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
-      function mk(id, color){
-        const m = document.createElementNS('http://www.w3.org/2000/svg','marker');
-        m.setAttribute('id', id); m.setAttribute('markerWidth','10'); m.setAttribute('markerHeight','10');
-        m.setAttribute('refX','9'); m.setAttribute('refY','5'); m.setAttribute('orient','auto');
-        const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-        poly.setAttribute('points','0 0, 10 5, 0 10'); poly.setAttribute('fill', color); m.appendChild(poly); defs.appendChild(m);
-      }
-      mk('arrowWhite','#ffffff'); mk('arrowGreen','#35d07f'); mk('arrowBlue','#0d6efd'); mk('arrowRed','#e63946'); mk('arrowYellow','#f4d35e');
-      draw.appendChild(defs);
-    }
-    function renderDraw(){
-      ensureMarkers();
-      const defs = draw.querySelector('defs');
-      [...draw.childNodes].forEach(n => { if (n !== defs) draw.removeChild(n); });
-      strokes.forEach(s => {
-        const poly = document.createElementNS('http://www.w3.org/2000/svg','polyline');
-        poly.setAttribute('fill','none');
-        poly.setAttribute('stroke', s.color || '#f4d35e');
-        poly.setAttribute('stroke-width', s.width || 5);
-        if (s.dashed) poly.setAttribute('stroke-dasharray','8 8');
-        poly.setAttribute('vector-effect','non-scaling-stroke');
-        poly.setAttribute('points', s.points.join(' '));
-        draw.appendChild(poly);
-      });
-      arrows.forEach((a) => {
-        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-        const line = document.createElementNS('http://www.w3.org/200.svg','line'); // (typo intencional? No) — corregimos abajo
-      });
-      // --- corregimos el createElementNS del line (arriba estaba mal por accidente de edición) ---
-      draw.querySelectorAll('g').forEach(n=>n.remove()); // limpieza si quedó algo
-      arrows.forEach((a) => {
-        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-        line.setAttribute('x1', a.x1); line.setAttribute('y1', a.y1); line.setAttribute('x2', a.x2); line.setAttribute('y2', a.y2);
-        line.setAttribute('stroke', a.color || '#f4d35e'); line.setAttribute('stroke-width', a.width || 5);
-        if (a.dashed) line.setAttribute('stroke-dasharray', '8 8');
-        line.setAttribute('marker-end', `url(#${markerId(a.color || '#f4d35e')})`);
-        line.setAttribute('vector-effect','non-scaling-stroke');
-        g.appendChild(line);
-        draw.appendChild(g);
-      });
-    }
-
-    // Interacción campo para frecce/matita
-    board.addEventListener('pointerdown', e => {
-      if (e.target.closest('.player') || e.target.closest('#ball')) return;
-      try { board.setPointerCapture(e.pointerId); } catch {}
-      let p = clientToBoard(e);
-      if (snapToggle.checked){ p.x = snap(p.x); p.y = snap(p.y); }
-
-      if (tool === 'arrows'){
-        drawingArrow = true; startPoint = { x: p.x, y: p.y };
-      } else {
-        drawingStroke = true;
-        currentStroke = {
-          points: [ `${p.x},${p.y}` ],
-          color: strokeColorSel.value,
-          width: parseInt(strokeWidthSel.value,10) || 5,
-          dashed: !!dashedToggle.checked
-        };
-        strokes.push(currentStroke);
-        renderDraw();
-      }
-      e.preventDefault();
-    }, {passive:false});
-
-    board.addEventListener('pointermove', e => {
-      if (tool !== 'pen' || !drawingStroke || !currentStroke) return;
-      let p = clientToBoard(e);
-      if (snapToggle.checked){ p.x = snap(p.x); p.y = snap(p.y); }
-      const last = currentStroke.points.length ? currentStroke.points[currentStroke.points.length-1] : null;
-      const [lx, ly] = last ? last.split(',').map(Number) : [NaN, NaN];
-      const dx = (isNaN(lx)?Infinity:Math.abs(p.x - lx));
-      const dy = (isNaN(ly)?Infinity:Math.abs(p.y - ly));
-      if (dx + dy > 0.5) {
-        currentStroke.points.push(`${p.x},${p.y}`);
-        renderDraw();
-      }
-      e.preventDefault();
-    }, {passive:false});
-
-    board.addEventListener('pointerup', e => {
-      try { board.releasePointerCapture(e.pointerId); } catch {}
-      let p = clientToBoard(e);
-      if (snapToggle.checked){ p.x = snap(p.x); p.y = snap(p.y); }
-
-      if (tool === 'arrows'){
-        if (!drawingArrow || !startPoint) return;
-        arrows.push({
-          x1: startPoint.x, y1: startPoint.y, x2: p.x, y2: p.y,
-          color: strokeColorSel.value, width: parseInt(strokeWidthSel.value,10) || 5,
-          dashed: !!dashedToggle.checked
-        });
-        startPoint = null; drawingArrow = false; saveArrows(); renderDraw();
-      } else {
-        if (!drawingStroke || !currentStroke) return;
-        drawingStroke = false;
-        saveStrokes(); renderDraw();
-      }
-      e.preventDefault();
-    }, {passive:false});
-
-    // Persistencia
-    function savePositions(){
-      const data = [...playersLayer.children].map(el => ({
-        team: el.dataset.team, number: +el.dataset.number,
-        x: parseFloat(el.style.left), y: parseFloat(el.style.top)
-      }));
-      localStorage.setItem('rugby-positions-v3', JSON.stringify(data));
-    }
-    function loadPositions(){
-      try{
-        const arr = JSON.parse(localStorage.getItem('rugby-positions-v3')||'null');
-        if (Array.isArray(arr) && arr.length===30){
-          playersLayer.innerHTML='';
-          arr.forEach(p=>{
-            const el=document.createElement('div');
-            el.className=`player ${p.team}`; el.textContent=p.number;
-            el.dataset.number=p.number; el.dataset.team=p.team;
-            el.style.left=p.x+'px'; el.style.top=p.y+'px';
-            // NO fijamos transform aquí
-            enableDragPlayer(el, () => { savePositions(); if (autoRecordChk.checked) recordFrame(); });
-            playersLayer.appendChild(el);
-          });
-          applyUprightTransforms();
-        }
-      }catch{}
-    }
-    function saveArrows(){ localStorage.setItem('rugby-arrows-v3', JSON.stringify(arrows)); }
-    function loadArrows(){ try{ arrows = JSON.parse(localStorage.getItem('rugby-arrows-v3')||'[]'); }catch{ arrows = []; } }
-    function saveStrokes(){ localStorage.setItem('rugby-strokes-v1', JSON.stringify(strokes)); }
-    function loadStrokes(){ try{ strokes = JSON.parse(localStorage.getItem('rugby-strokes-v1')||'[]'); }catch{ strokes = []; } }
-
-    // ---- TIMELINE ----
-    let timeline = [];
-    let playing = false, paused = false, playIndex = 0, rafId = null;
-    let segmentStartTime = 0, segmentDuration = 800;
-    let fromFrame = null, toFrame = null;
     const TL_KEY = 'rugby-timeline-v2';
+    const POS_KEY = 'rugby-positions-v3';
+    const ARROW_KEY = 'rugby-arrows-v3';
+    const STROKE_KEY = 'rugby-strokes-v1';
+    const BALL_KEY = 'rugby-ball-v1';
+    const PLAY_PREFIX = 'play-v3-';
 
-    function updateFrameCount(){
-      frameCountEl.textContent = timeline.length;
-      frameTotal.textContent = Math.max(0, timeline.length - 1);
-      scrubber.max = Math.max(0, timeline.length - 1);
-      if (parseInt(scrubber.value,10) > scrubber.max) scrubber.value = scrubber.max;
-      scrubberVal.textContent = scrubber.value;
-    }
-
-    function snapshotPlayers(){ return [...playersLayer.children].map(el => ({ team: el.dataset.team, number: +el.dataset.number, x: parseFloat(el.style.left), y: parseFloat(el.style.top) })); }
-    function snapshotBall(){ return { x: parseFloat(ball.style.left)||WIDTH/2, y: parseFloat(ball.style.top)||HEIGHT/2 }; }
-    function snapshotFrame(){ return { players: snapshotPlayers(), ball: snapshotBall() }; }
-
-    function recordFrame(){ timeline.push(snapshotFrame()); saveTimeline(); updateFrameCount(); }
-    function saveTimeline(){ localStorage.setItem(TL_KEY, JSON.stringify(timeline)); }
-    function loadTimeline(){
-      try{
-        const arr = JSON.parse(localStorage.getItem(TL_KEY)||'[]');
-        timeline = Array.isArray(arr) ? arr.map(f => Array.isArray(f) ? { players:f, ball: snapshotBall() } : f) : [];
-      }catch{ timeline = []; }
-      updateFrameCount();
-    }
-    function clearTimeline(){ timeline = []; saveTimeline(); updateFrameCount(); stopPlayback(); }
-
-    function setFromFrame(frame){
-      frame.players.forEach(p => {
-        const el = [...playersLayer.children].find(e => e.dataset.team===p.team && +e.dataset.number===p.number);
-        if (el){ el.style.left = p.x + 'px'; el.style.top  = p.y + 'px'; }
-      });
-      if (frame.ball){ ball.style.left = frame.ball.x + 'px'; ball.style.top  = frame.ball.y + 'px'; }
-      savePositions(); saveBall();
-    }
-    function lerp(a,b,t){ return a + (b - a) * t; }
-    function toMap(frame){ const m = new Map(); frame.players.forEach(p => m.set(p.team + '#' + p.number, p)); return m; }
-
-    function animateSegment(now){
-      if (!playing || paused) { rafId = requestAnimationFrame(animateSegment); return; }
-      const elapsed = now - segmentStartTime;
-      const u = Math.max(0, Math.min(1, elapsed / segmentDuration));
-      const A = toMap(fromFrame); const B = toMap(toFrame);
-
-      [...playersLayer.children].forEach(el => {
-        const key = el.dataset.team + '#' + el.dataset.number;
-        const pa = A.get(key) || { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
-        const pb = B.get(key) || pa;
-        el.style.left = lerp(pa.x, pb.x, u) + 'px';
-        el.style.top  = lerp(pa.y, pb.y, u) + 'px';
-      });
-
-      ball.style.left = lerp(fromFrame.ball.x, toFrame.ball.x, u) + 'px';
-      ball.style.top  = lerp(fromFrame.ball.y, toFrame.ball.y, u) + 'px';
-
-      if (u >= 1) {
-        playIndex++;
-        scrubber.value = playIndex; scrubberVal.textContent = scrubber.value;
-        if (playIndex >= timeline.length - 1) { playing = false; cancelAnimationFrame(rafId); rafId = null; return; }
-        fromFrame = timeline[playIndex]; toFrame = timeline[playIndex+1]; segmentStartTime = performance.now();
-      }
-      rafId = requestAnimationFrame(animateSegment);
-    }
-
-    function playTimeline(){
-      if (timeline.length < 2) { alert('Necesitás al menos 2 pasos grabados.'); return; }
-      segmentDuration = Math.max(100, parseInt(speedInput.value||800,10));
-      if (!paused){
-        playIndex = parseInt(scrubber.value,10) || 0;
-        if (playIndex >= timeline.length - 1) playIndex = 0;
-        fromFrame = timeline[playIndex]; toFrame = timeline[playIndex+1];
-        setFromFrame(fromFrame);
-      }
-      paused = false; playing = true; segmentStartTime = performance.now();
-      if (!rafId) rafId = requestAnimationFrame(animateSegment);
-    }
-    function pauseTimeline(){ if (!playing) return; paused = true; }
-    function stopPlayback(){ playing = false; paused = false; if (rafId){ cancelAnimationFrame(rafId); rafId = null; } }
-
-    // UI Animación
-    recordStepBtn.addEventListener('click', recordFrame);
-    playBtn.addEventListener('click', playTimeline);
-    pauseBtn.addEventListener('click', pauseTimeline);
-    stopBtn.addEventListener('click', stopPlayback);
-    clearTimelineBtn.addEventListener('click', clearTimeline);
-
-    exportTimelineBtn.addEventListener('click', async ()=>{
-      try{ await navigator.clipboard.writeText(JSON.stringify(timeline)); alert('Timeline copiada.'); }
-      catch{ alert('No se pudo copiar.'); }
-    });
-    importTimelineBtn.addEventListener('click', ()=>{
-      const txt = prompt('Pegá el JSON de la timeline:'); if (!txt) return;
-      try{ const arr = JSON.parse(txt); if (Array.isArray(arr)){ timeline = arr.map(f => Array.isArray(f) ? { players:f, ball:snapshotBall() } : f); saveTimeline(); updateFrameCount(); alert('Timeline importada.'); } else { alert('Formato inválido.'); } }
-      catch(e){ alert('JSON inválido.'); }
-    });
-
-    // Scrubber
-    function gotoFrame(idx){
-      if (!timeline.length) return;
-      idx = Math.max(0, Math.min(timeline.length - 1, idx));
-      stopPlayback(); scrubber.value = idx; scrubberVal.textContent = scrubber.value; setFromFrame(timeline[idx]);
-    }
-    scrubber.addEventListener('input', () => gotoFrame(parseInt(scrubber.value,10)));
-    prevFrameBtn.addEventListener('click', () => gotoFrame(parseInt(scrubber.value,10) - 1));
-    nextFrameBtn.addEventListener('click', () => gotoFrame(parseInt(scrubber.value,10) + 1));
-
-    // Giocate CRUD
-    function refreshPlayList(){
-      const sel = loadPlaySel; if (!sel) return; sel.innerHTML='';
-      const keys = Object.keys(localStorage).filter(k=>k.startsWith('play-v3-')).sort();
-      keys.forEach(k=>{ const opt=document.createElement('option'); opt.value=k; opt.textContent=k.replace('play-v3-',''); sel.appendChild(opt); });
-    }
-    savePlayBtn.onclick = () => {
-      const name = (playNameInput.value||'').trim(); if (!name) { alert('Dai un nome alla giocata.'); return; }
-      const payload = { positions: snapshotPlayers(), arrows, strokes, timeline };
-      localStorage.setItem('play-v3-'+name, JSON.stringify(payload)); refreshPlayList(); loadPlaySel.value = 'play-v3-'+name;
-      alert('Giocata salvata con animazione.');
-    };
-    duplicatePlayBtn.onclick = () => {
-      const key = loadPlaySel.value; if (!key) { alert('Seleziona una giocata da duplicare.'); return; }
-      const base = key.replace('play-v3-',''); let i=1, newName;
-      do { newName = base + ' (copia '+i+')'; i++; } while(localStorage.getItem('play-v3-'+newName));
-      localStorage.setItem('play-v3-'+newName, localStorage.getItem(key)); refreshPlayList(); loadPlaySel.value = 'play-v3-'+newName; playNameInput.value = newName;
-    };
-    deletePlayBtn.onclick = () => { const key = loadPlaySel.value; if (!key) return; if (!confirm('Eliminar?')) return; localStorage.removeItem(key); refreshPlayList(); };
-    loadPlaySel.onchange = () => {
-      const data = JSON.parse(localStorage.getItem(loadPlaySel.value)||'null'); if (!data) return;
-      playersLayer.innerHTML='';
-      (data.positions||[]).forEach(p=>{
-        const el=document.createElement('div'); el.className=`player ${p.team}`; el.textContent=p.number;
-        el.dataset.number=p.number; el.dataset.team=p.team;
-        el.style.left=p.x+'px'; el.style.top=p.y+'px';
-        enableDragPlayer(el, () => { savePositions(); if (autoRecordChk.checked) recordFrame(); });
-        playersLayer.appendChild(el);
-      });
-      applyUprightTransforms();
-      arrows = data.arrows||[]; strokes = data.strokes||[];
-      timeline = Array.isArray(data.timeline) ? data.timeline.map(f => Array.isArray(f) ? { players:f, ball:snapshotBall() } : f) : [];
-      savePositions(); saveArrows(); saveStrokes(); saveTimeline();
-      updateFrameCount(); renderDraw();
-      alert('Giocata carregata' + (timeline.length ? ' con animazione.' : '.'));
-      if (timeline.length) gotoFrame(0);
+    // --- ESTADO CENTRALIZADO (appState) ---
+    let appState = {
+        // Layout
+        layout: { mode: 'landscape', scale: 1, tx: 0, ty: 0, forceVertical: false },
+        // Dibujo
+        tool: 'arrows', // 'arrows' o 'pen'
+        arrows: [],
+        strokes: [],
+        drawingArrow: false,
+        drawingStroke: false,
+        startPoint: null,
+        currentStroke: null,
+        // Animación
+        timeline: [],
+        playing: false,
+        paused: false,
+        playIndex: 0,
+        rafId: null,
+        segmentStartTime: 0,
+        segmentDuration: 800,
+        fromFrame: null,
+        toFrame: null,
     };
 
-    // Etiquetas
-    toggleLabelsBtn.onclick = () => {
-      const showing = playersLayer.classList.toggle('showing-labels');
-      toggleLabelsBtn.textContent = showing ? 'Nascondi etichette' : 'Mostra etichette';
-      [...playersLayer.children].forEach(el => showing ? el.title = (el.dataset.team==='blue'?'Blu ':'Rosso ') + el.dataset.number : el.removeAttribute('title'));
+    // --- REFERENCIAS DEL DOM (DOM ELEMENTS) ---
+    const dom = {
+        // Capas
+        boardViewport: document.getElementById('boardViewport'),
+        boardWrap: document.getElementById('boardWrap'),
+        board: document.getElementById('board'),
+        playersLayer: document.getElementById('players'),
+        draw: document.getElementById('draw'),
+        gridSvg: document.getElementById('grid'),
+        ball: document.getElementById('ball'),
+        exportCanvas: document.getElementById('exportCanvas'),
+        ctx: document.getElementById('exportCanvas').getContext('2d'),
+        // Sidebar y Menú
+        sidebar: document.getElementById('sidebar'),
+        menuBtn: document.getElementById('menuBtn'),
+        closeMenuBtn: document.getElementById('closeMenu'),
+        scrim: document.getElementById('scrim'),
+        // UI Controles
+        toggleLabelsBtn: document.getElementById('toggleLabels'),
+        resetBtn: document.getElementById('reset'),
+        snapToggle: document.getElementById('snapToggle'),
+        verticalFieldChk: document.getElementById('verticalField'),
+        // UI Dibujo
+        toolArrowsBtn: document.getElementById('toolArrows'),
+        toolPenBtn: document.getElementById('toolPen'),
+        undoGenericBtn: document.getElementById('undoGeneric'),
+        clearArrowsBtn: document.getElementById('clearArrows'),
+        clearAllBtn: document.getElementById('clearAll'),
+        strokeColorSel: document.getElementById('strokeColor'),
+        strokeWidthSel: document.getElementById('strokeWidth'),
+        dashedToggle: document.getElementById('dashedToggle'),
+        // UI Animación
+        recordStepBtn: document.getElementById('recordStepBtn'),
+        autoRecordChk: document.getElementById('autoRecord'),
+        playBtn: document.getElementById('playBtn'),
+        pauseBtn: document.getElementById('pauseBtn'),
+        stopBtn: document.getElementById('stopBtn'),
+        speedInput: document.getElementById('speedInput'),
+        clearTimelineBtn: document.getElementById('clearTimelineBtn'),
+        exportTimelineBtn: document.getElementById('exportTimelineBtn'),
+        importTimelineBtn: document.getElementById('importTimelineBtn'),
+        frameCountEl: document.getElementById('frameCount'),
+        scrubber: document.getElementById('scrubber'),
+        scrubberVal: document.getElementById('scrubberVal'),
+        frameTotal: document.getElementById('frameTotal'),
+        prevFrameBtn: document.getElementById('prevFrameBtn'),
+        nextFrameBtn: document.getElementById('nextFrameBtn'),
+        // UI Giocate/Plays
+        playNameInput: document.getElementById('playName'),
+        loadPlaySel: document.getElementById('loadPlay'),
+        savePlayBtn: document.getElementById('savePlay'),
+        duplicatePlayBtn: document.getElementById('duplicatePlay'),
+        deletePlayBtn: document.getElementById('deletePlay'),
+        // UI Export
+        exportJpgBtn: document.getElementById('exportJpgBtn'),
+        exportVideoBtn: document.getElementById('exportVideoBtn'),
+        exportMp4Btn: document.getElementById('exportMp4Btn'),
+        ffmpegStatus: document.getElementById('ffmpegStatus'),
     };
 
-    // Herramientas dibujo
-    function setTool(next){
-      tool = next;
-      if (tool === 'arrows'){ toolArrowsBtn.textContent = 'Frecce: Attivo'; toolPenBtn.textContent = 'Matita: Inattiva'; }
-      else { toolArrowsBtn.textContent = 'Frecce: Inattivo'; toolPenBtn.textContent = 'Matita: Attiva'; }
+    // --- UTILIDADES ---
+    function dist(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return Math.hypot(dx, dy); }
+    function centerOf(el) { return { x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0 }; }
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function ballOverPlayer(playerEl, threshold = 28) {
+        const b = centerOf(dom.ball);
+        const p = centerOf(playerEl);
+        return dist(b.x, b.y, p.x, p.y) < threshold;
     }
-    toolArrowsBtn.onclick = () => setTool('arrows');
-    toolPenBtn.onclick = () => setTool('pen');
-    undoGenericBtn.onclick = () => { if (tool === 'arrows') { arrows.pop(); saveArrows(); } else { strokes.pop(); saveStrokes(); } renderDraw(); };
-    clearArrowsBtn.onclick = () => { arrows = []; saveArrows(); renderDraw(); };
-    clearAllBtn.onclick = () => { arrows = []; strokes = []; saveArrows(); saveStrokes(); renderDraw(); };
-    snapToggle.addEventListener('change', renderGrid);
+    function snap(val) { return Math.round(val / GRID_SIZE) * GRID_SIZE; }
 
-    /* ==============================
-       EXPORT: CANVAS 2D + WebM + MP4
-       ============================== */
-    function drawPitch(ctx){
-      ctx.fillStyle = '#137a46'; ctx.fillRect(0,0,WIDTH,HEIGHT);
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.strokeRect(5,5,1190,690);
-      ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fillRect(0,0,80,700); ctx.fillRect(1120,0,80,700);
-      function vline(x,w=4,dash=null){ ctx.save(); ctx.beginPath(); if(dash)ctx.setLineDash(dash); ctx.moveTo(x,0); ctx.lineTo(x,HEIGHT); ctx.lineWidth=w; ctx.stroke(); ctx.restore(); }
-      function hline(y,w=2,dash=[4,8]){ ctx.save(); ctx.beginPath(); if(dash)ctx.setLineDash(dash); ctx.moveTo(5,y); ctx.lineTo(1195,y); ctx.lineWidth=w; ctx.stroke(); ctx.restore(); }
-      vline(80,4); vline(1120,4); vline(309,3); vline(891,3); vline(500,2,[8,10]); vline(697,2,[8,10]); vline(600,4);
-      hline(50); hline(150); hline(550); hline(650); vline(130,2,[8,10]); vline(1070,2,[8,10]);
-    }
-    function drawPlayer(ctx, p){
-      const r=20; ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
-      ctx.fillStyle = p.team==='blue' ? '#0d6efd' : '#e63946'; ctx.fill();
-      ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
-      ctx.fillStyle='#fff'; ctx.font='700 14px system-ui,-apple-system,Segoe UI,Roboto,Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.number,p.x,p.y);
-    }
-    function drawBall(ctx, b){
-      ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(-15*Math.PI/180);
-      ctx.beginPath(); ctx.ellipse(0,0,25,15,0,0,Math.PI*2); ctx.fillStyle='#ffd400'; ctx.fill();
-      ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
-      ctx.setLineDash([4,6]); ctx.lineWidth=2; ctx.strokeStyle='rgba(0,0,0,.25)';
-      ctx.beginPath(); ctx.ellipse(0,0,15,9,0,0,Math.PI*2); ctx.stroke(); ctx.restore();
-    }
-    function drawStroke(ctx, s){
-      const pts = s.points.map(pt => pt.split(',').map(Number)); if (pts.length<2) return;
-      ctx.save(); ctx.beginPath(); if (s.dashed) ctx.setLineDash([8,8]); ctx.lineWidth=s.width||5; ctx.strokeStyle=s.color||'#f4d35e';
-      ctx.moveTo(pts[0][0], pts[0][1]); for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke(); ctx.restore();
-    }
-    function drawArrow(ctx, a){
-      ctx.save(); ctx.beginPath(); if(a.dashed) ctx.setLineDash([8,8]); ctx.lineWidth=a.width||5; ctx.strokeStyle=a.color||'#f4d35e';
-      ctx.moveTo(a.x1,a.y1); ctx.lineTo(a.x2,a.y2); ctx.stroke();
-      const ang=Math.atan2(a.y2-a.y1,a.x2-a.x1), head=12+(a.width||5);
-      ctx.beginPath(); ctx.moveTo(a.x2,a.y2);
-      ctx.lineTo(a.x2-head*Math.cos(ang-Math.PI/6), a.y2-head*Math.sin(ang-Math.PI/6));
-      ctx.lineTo(a.x2-head*Math.cos(ang+Math.PI/6), a.y2-head*Math.sin(ang+Math.PI/6));
-      ctx.closePath(); ctx.fillStyle=a.color||'#f4d35e'; ctx.fill(); ctx.restore();
-    }
+    // --- GESTIÓN DE LAYOUT Y COORDENADAS (LayoutManager) ---
+    const LayoutManager = {
+        isPortraitLike() {
+            if (appState.layout.forceVertical) return true;
+            const mq = window.matchMedia('(orientation: portrait)');
+            return (mq && mq.matches) || (window.innerHeight > window.innerWidth);
+        },
+        applyUprightTransforms() {
+            const rotatePlayers = (appState.layout.mode === 'portrait');
+            [...dom.playersLayer.children].forEach(el => {
+                el.style.transform = rotatePlayers
+                    ? 'translate(-50%, -50%) rotate(-90deg)'
+                    : 'translate(-50%, -50%)';
+            });
+            // El balón rota por CSS, solo ajustamos su posición.
+        },
+        fitBoard() {
+            const vp = dom.boardViewport.getBoundingClientRect();
+            const availW = vp.width;
+            const availH = vp.height;
 
-    function getCurrentPlayersFromDOM(){ return [...playersLayer.children].map(el => ({ team: el.dataset.team, number:+el.dataset.number, x: parseFloat(el.style.left), y: parseFloat(el.style.top) })); }
-    function getCurrentBallFromDOM(){ return { x: parseFloat(ball.style.left)||WIDTH/2, y: parseFloat(ball.style.top)||HEIGHT/2 }; }
-    function renderFrameToCanvas(playersArr, ballPos, includeOverlays=true){
-      ctx.clearRect(0,0,WIDTH,HEIGHT); drawPitch(ctx);
-      playersArr.forEach(p => drawPlayer(ctx,p)); drawBall(ctx,ballPos);
-      if (includeOverlays){ strokes.forEach(s=>drawStroke(ctx,s)); arrows.forEach(a=>drawArrow(ctx,a)); }
-    }
+            if (!LayoutManager.isPortraitLike()) {
+                // Modo horizontal estándar (Landscape)
+                appState.layout.mode = 'landscape';
+                appState.layout.scale = Math.min(availW / WIDTH, availH / HEIGHT);
+                
+                // Calcular la traducción para centrar el tablero
+                const scaledW = WIDTH * appState.layout.scale;
+                const scaledH = HEIGHT * appState.layout.scale;
+                appState.layout.tx = (availW - scaledW) / 2;
+                appState.layout.ty = (availH - scaledH) / 2;
+                
+                dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(0deg) scale(${appState.layout.scale})`;
+                dom.boardWrap.style.transformOrigin = 'top left';
 
-    // Export JPG del frame actual
-    exportJpgBtn.addEventListener('click', () => {
-      const playersNow = getCurrentPlayersFromDOM();
-      const ballNow = getCurrentBallFromDOM();
-      renderFrameToCanvas(playersNow, ballNow, true);
-      const url = exportCanvas.toDataURL('image/jpeg', 0.95);
-      const a = document.createElement('a'); a.href = url; a.download = (playNameInput.value?.trim() || 'lavagna') + '_frame.jpg'; document.body.appendChild(a); a.click(); a.remove();
-    });
+            } else {
+                // Modo Vertical (Portrait) - El board de 1200x700 está ROTADO 90 grados
+                appState.layout.mode = 'portrait';
+                
+                // La dimensión deseada es ahora 700 (ancho) x 1200 (alto)
+                const rotW = HEIGHT; // 700
+                const rotH = WIDTH;  // 1200
 
-    // Export video WebM (timeline completa)
-    async function exportWebMBlob(){
-      if (timeline.length < 2){ alert('Necesitás al menos 2 frames.'); throw new Error('No frames'); }
-      const fps = 30, msPerFrame = 1000 / fps;
-      const stream = exportCanvas.captureStream(fps);
-      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
-      const chunks = [];
-      recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-      const done = new Promise(res => recorder.onstop = res);
+                // La escala debe caber en el viewport: ancho (700) en availW, alto (1200) en availH
+                appState.layout.scale = Math.min(availW / rotW, availH / rotH);
+                
+                // Calcular las dimensiones escaladas
+                const contentW = rotW * appState.layout.scale;
+                const contentH = rotH * appState.layout.scale;
+                
+                // Calcular la traslación para centrar el tablero rotado
+                const txCenter = (availW - contentW) / 2;
+                const tyCenter = (availH - contentH) / 2;
+                
+                // Traslación final (ajuste de origen + centrado)
+                // Aquí el ajuste es crucial: el origen (0,0) del wrap rotado a 90 grados está en la esquina superior derecha del tablero.
+                // Necesitamos desplazarlo en X para centrar, y en Y compensar la altura (700px) que ahora es el ancho.
+                appState.layout.tx = txCenter + contentW;
+                appState.layout.ty = tyCenter;
 
-      const segMs = Math.max(100, parseInt(speedInput.value||800,10));
-      const stepsPerSeg = Math.max(1, Math.round(segMs / msPerFrame));
+                // Aplicar transformación
+                dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(90deg) scale(${appState.layout.scale})`;
+                dom.boardWrap.style.transformOrigin = 'top left';
+            }
+            
+            LayoutManager.applyUprightTransforms();
+        },
+        clientToBoard(e) {
+            const vp = dom.boardViewport.getBoundingClientRect();
+            const cx = e.clientX - vp.left;
+            const cy = e.clientY - vp.top;
+            if (appState.layout.mode === 'portrait') {
+                // Usamos la traslación inversa para obtener coordenadas sin rotación/escala
+                const x_raw = (cx - appState.layout.tx);
+                const y_raw = (cy - appState.layout.ty);
 
-      // Primer frame para fijar tamaño
-      const first = timeline[0];
-      renderFrameToCanvas(first.players, first.ball, true);
-      await new Promise(r => setTimeout(r, msPerFrame));
-
-      recorder.start();
-
-      for (let i=0;i<timeline.length-1;i++){
-        const A = timeline[i], B = timeline[i+1];
-        const mapA = new Map(A.players.map(p=>[p.team+'#'+p.number, p]));
-        const mapB = new Map(B.players.map(p=>[p.team+'#'+p.number, p]));
-        for (let s=0; s<stepsPerSeg; s++){
-          const t = s / stepsPerSeg;
-          const playersInterp = [];
-          for (const [key, pa] of mapA.entries()){
-            const pb = mapB.get(key) || pa;
-            playersInterp.push({ team:key.split('#')[0], number:+key.split('#')[1], x: lerp(pa.x,pb.x,t), y: lerp(pa.y,pb.y,t) });
-          }
-          const ballInterp = { x: lerp(A.ball.x,B.ball.x,t), y: lerp(A.ball.y,B.ball.y,t) };
-          renderFrameToCanvas(playersInterp, ballInterp, true);
-          await new Promise(r => setTimeout(r, msPerFrame));
+                // Aplicar rotación y escala inversas
+                const px = y_raw / appState.layout.scale;
+                const py = -x_raw / appState.layout.scale;
+                
+                // Ajuste de traslación inversa (la traslación inicial en Y era la altura del board (700))
+                const x = px;
+                const y = py ;
+                
+                return { x: clamp(x, 0, WIDTH), y: clamp(y, 0, HEIGHT) };
+            } else {
+                const rect = dom.board.getBoundingClientRect();
+                // En modo landscape, la escala es la aplicada por fitBoard. La traslación ya está en tx/ty.
+                const x = (e.clientX - vp.left - appState.layout.tx) / appState.layout.scale;
+                const y = (e.clientY - vp.top - appState.layout.ty) / appState.layout.scale;
+                return { x: clamp(x, 0, WIDTH), y: clamp(y, 0, HEIGHT) };
+            }
+        },
+        deltaToBoard(dxClient, dyClient) {
+            if (appState.layout.mode === 'portrait') {
+                const dx = dyClient / appState.layout.scale; // Invertido y signo invertido por la rotación
+                const dy = -dxClient / appState.layout.scale; // Invertido y signo invertido por la rotación
+                return { dx, dy };
+            } else {
+                const rect = dom.board.getBoundingClientRect();
+                const scale = rect.width / WIDTH;
+                return { dx: dxClient / scale, dy: dyClient / scale };
+            }
+        },
+        renderGrid() {
+            const s = GRID_SIZE;
+            dom.gridSvg.innerHTML = '';
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            for (let x = s; x < WIDTH; x += s) {
+                const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                l.setAttribute('x1', x); l.setAttribute('y1', 0); l.setAttribute('x2', x); l.setAttribute('y2', HEIGHT);
+                l.setAttribute('stroke', 'var(--grid)'); l.setAttribute('stroke-width', '1'); g.appendChild(l);
+            }
+            for (let y = s; y < HEIGHT; y += s) {
+                const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                l.setAttribute('x1', 0); l.setAttribute('y1', y); l.setAttribute('x2', WIDTH); l.setAttribute('y2', y);
+                l.setAttribute('stroke', 'var(--grid)'); l.setAttribute('stroke-width', '1'); g.appendChild(l);
+            }
+            dom.gridSvg.appendChild(g);
+            dom.gridSvg.classList.toggle('active', dom.snapToggle.checked);
         }
-      }
-      const last = timeline[timeline.length-1];
-      renderFrameToCanvas(last.players, last.ball, true);
-      await new Promise(r => setTimeout(r, msPerFrame));
+    };
 
-      recorder.stop(); await done;
-      return new Blob(chunks, { type: 'video/webm' });
-    }
+    // --- GESTIÓN DE JUGADORES Y BALÓN (UnitsManager) ---
+    const UnitsManager = {
+        initialPositions: (function () {
+            const positions = [];
+            for (let i = 1; i <= 15; i++) positions.push({ team: 'blue', number: i, x: WIDTH * 0.18, y: HEIGHT * (0.1 + (i - 1) * (0.8 / 14)) });
+            for (let i = 1; i <= 15; i++) positions.push({ team: 'red', number: i, x: WIDTH * 0.82, y: HEIGHT * (0.1 + (i - 1) * (0.8 / 14)) });
+            return positions;
+        })(),
+        createPlayers() {
+            dom.playersLayer.innerHTML = '';
+            UnitsManager.initialPositions.forEach(p => {
+                const el = document.createElement('div');
+                el.className = `player ${p.team}`;
+                el.textContent = p.number;
+                el.style.left = (p.x) + 'px';
+                el.style.top = (p.y) + 'px';
+                el.dataset.number = p.number;
+                el.dataset.team = p.team;
+                UnitsManager.enableDragPlayer(el, () => { StorageManager.savePositions(); if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); });
+                dom.playersLayer.appendChild(el);
+            });
+            LayoutManager.applyUprightTransforms();
+        },
+        enableDragPlayer(playerEl, onDrop) {
+            let pointerId = null, startX = 0, startY = 0, origL = 0, origT = 0;
+            let lockBallToPlayer = false;
+            let offX = 0, offY = 0;
 
-    exportVideoBtn.addEventListener('click', async () => {
-      try{
-        const webmBlob = await exportWebMBlob();
-        const url = URL.createObjectURL(webmBlob);
-        const a = document.createElement('a'); a.href = url; a.download = (playNameInput.value?.trim() || 'lavagna') + '_animazione.webm';
-        document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 500);
-      }catch(e){ console.error(e); }
-    });
+            const onDown = e => {
+                pointerId = e.pointerId;
+                playerEl.setPointerCapture(pointerId);
+                e.preventDefault();
+                startX = e.clientX; startY = e.clientY;
+                origL = parseFloat(playerEl.style.left) || 0;
+                origT = parseFloat(playerEl.style.top) || 0;
 
-    // MP4 con ffmpeg.wasm
-    let ffmpegInstance = null;
-    async function ensureFFmpeg(){
-      if (ffmpegInstance) return ffmpegInstance;
-      ffmpegStatus.textContent = 'Cargando FFmpeg…';
-      const { createFFmpeg, fetchFile } = FFmpeg;
-      const ffmpeg = createFFmpeg({ log: false, corePath: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js' });
-      await ffmpeg.load();
-      ffmpegInstance = { ffmpeg, fetchFile };
-      ffmpegStatus.textContent = 'FFmpeg listo.';
-      return ffmpegInstance;
-    }
+                lockBallToPlayer = ballOverPlayer(playerEl);
+                if (lockBallToPlayer) {
+                    const p0 = { x: origL, y: origT };
+                    const b0 = centerOf(dom.ball);
+                    offX = b0.x - p0.x;
+                    offY = b0.y - p0.y;
+                }
 
-    exportMp4Btn.addEventListener('click', async ()=>{
-      try{
-        const webmBlob = await exportWebMBlob();
-        const { ffmpeg, fetchFile } = await ensureFFmpeg();
-        ffmpegStatus.textContent = 'Convirtiendo a MP4…';
-        ffmpeg.FS('writeFile', 'input.webm', await fetchFile(webmBlob));
-        await ffmpeg.run('-i', 'input.webm', '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-pix_fmt', 'yuv420p', 'output.mp4');
-        const data = ffmpeg.FS('readFile', 'output.mp4');
-        const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
-        const url = URL.createObjectURL(mp4Blob);
-        const a = document.createElement('a'); a.href = url; a.download = (playNameInput.value?.trim() || 'lavagna') + '_animazione.mp4';
-        document.body.appendChild(a); a.click();
-        setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); ffmpegStatus.textContent = 'MP4 listo.'; }, 500);
-        try{ ffmpeg.FS('unlink','input.webm'); ffmpeg.FS('unlink','output.mp4'); }catch{}
-      }catch(err){
-        console.error(err);
-        ffmpegStatus.textContent = 'No se pudo convertir a MP4 en este navegador. Usá el WebM, o te habilito otra opción.';
-        alert('Si falla MP4, descargá el WebM; puedo sumar otra ruta de conversión.');
-      }
-    });
+                const onMove = ev => {
+                    if (ev.pointerId !== pointerId) return;
+                    ev.preventDefault();
+                    const { dx, dy } = LayoutManager.deltaToBoard(ev.clientX - startX, ev.clientY - startY);
+                    let nx = clamp(origL + dx, 0, WIDTH);
+                    let ny = clamp(origT + dy, 0, HEIGHT);
+                    playerEl.style.left = nx + 'px';
+                    playerEl.style.top = ny + 'px';
+
+                    if (lockBallToPlayer) {
+                        const bx = clamp(nx + offX, 0, WIDTH);
+                        const by = clamp(ny + offY, 0, HEIGHT);
+                        dom.ball.style.left = bx + 'px';
+                        dom.ball.style.top = by + 'px';
+                    }
+                };
+
+                const onUp = ev => {
+                    if (ev.pointerId !== pointerId) return;
+                    try { playerEl.releasePointerCapture(pointerId); } catch { }
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+
+                    if (dom.snapToggle.checked) {
+                        const px = snap(parseFloat(playerEl.style.left));
+                        const py = snap(parseFloat(playerEl.style.top));
+                        playerEl.style.left = px + 'px';
+                        playerEl.style.top = py + 'px';
+                        if (lockBallToPlayer) {
+                            const sbx = clamp(snap(px + offX), 0, WIDTH);
+                            const sby = clamp(snap(py + offY), 0, HEIGHT);
+                            dom.ball.style.left = sbx + 'px';
+                            dom.ball.style.top = sby + 'px';
+                        }
+                    }
+                    (onDrop || (() => { }))();
+                };
+
+                document.addEventListener('pointermove', onMove, { passive: false });
+                document.addEventListener('pointerup', onUp, { passive: false });
+            };
+
+            playerEl.addEventListener('pointerdown', onDown, { passive: false });
+            playerEl.ondragstart = () => false;
+        },
+        placeBall(x = WIDTH * 0.5, y = HEIGHT * 0.5) {
+            dom.ball.style.left = x + 'px';
+            dom.ball.style.top = y + 'px';
+            dom.ball.style.transform = 'translate(-50%, -50%) rotate(-15deg)';
+        },
+        enableDragBall(onDrop) {
+            let pointerId = null, startX = 0, startY = 0, origL = 0, origT = 0;
+            let passerEl = null;
+
+            const onDown = e => {
+                pointerId = e.pointerId;
+                dom.ball.setPointerCapture(pointerId);
+                e.preventDefault();
+                startX = e.clientX; startY = e.clientY;
+                origL = parseFloat(dom.ball.style.left) || 0;
+                origT = parseFloat(dom.ball.style.top) || 0;
+
+                const b0 = centerOf(dom.ball);
+                passerEl = (function () {
+                    let best = null, bestD = Infinity;
+                    for (const el of dom.playersLayer.children) {
+                        const p = centerOf(el);
+                        const d = dist(b0.x, b0.y, p.x, p.y);
+                        if (d < 28 && d < bestD) { best = el; bestD = d; }
+                    }
+                    return best;
+                })();
+
+                if (passerEl) {
+                    const p = centerOf(passerEl);
+                    UnitsManager.setPassPreview(p.x, p.y, b0.x, b0.y);
+                }
+
+                const onMove = ev => {
+                    if (ev.pointerId !== pointerId) return;
+                    ev.preventDefault();
+                    const { dx, dy } = LayoutManager.deltaToBoard(ev.clientX - startX, ev.clientY - startY);
+                    let nx = clamp(origL + dx, 0, WIDTH);
+                    let ny = clamp(origT + dy, 0, HEIGHT);
+                    dom.ball.style.left = nx + 'px';
+                    dom.ball.style.top = ny + 'px';
+
+                    // Si hay un pasador inicial, dibuja la línea de pase
+                    if (passerEl) {
+                        const p = centerOf(passerEl);
+                        UnitsManager.setPassPreview(p.x, p.y, nx, ny);
+                    }
+                };
+
+                const onUp = ev => {
+                    if (ev.pointerId !== pointerId) return;
+                    try { dom.ball.releasePointerCapture(pointerId); } catch { }
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+                    UnitsManager.clearPassPreview();
+
+                    if (dom.snapToggle.checked) {
+                        dom.ball.style.left = snap(parseFloat(dom.ball.style.left)) + 'px';
+                        dom.ball.style.top = snap(parseFloat(dom.ball.style.top)) + 'px';
+                    }
+                    (onDrop || (() => { }))();
+                };
+
+                document.addEventListener('pointermove', onMove, { passive: false });
+                document.addEventListener('pointerup', onUp, { passive: false });
+            };
+
+            dom.ball.addEventListener('pointerdown', onDown, { passive: false });
+            dom.ball.ondragstart = () => false;
+        },
+        setPassPreview(x1, y1, x2, y2) {
+            let passEl = document.getElementById('passPreview');
+            if (!passEl) {
+                passEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                passEl.id = 'passPreview';
+                passEl.setAttribute('stroke', 'var(--yellow)');
+                passEl.setAttribute('stroke-width', '5');
+                passEl.setAttribute('stroke-dasharray', '12 8');
+                passEl.style.pointerEvents = 'none';
+                dom.draw.prepend(passEl); // Asegurarse de que esté debajo de los dibujos
+            }
+            passEl.setAttribute('x1', x1);
+            passEl.setAttribute('y1', y1);
+            passEl.setAttribute('x2', x2);
+            passEl.setAttribute('y2', y2);
+        },
+        clearPassPreview() {
+            const passEl = document.getElementById('passPreview');
+            if (passEl) passEl.remove();
+        }
+    };
+
+
+    // --- GESTIÓN DE DIBUJO (DrawManager) ---
+    const DrawManager = {
+        clearDraw() {
+            dom.draw.innerHTML = '';
+            appState.arrows = [];
+            appState.strokes = [];
+            StorageManager.saveArrows();
+            StorageManager.saveStrokes();
+        },
+        clearArrows() {
+            appState.arrows = [];
+            DrawManager.renderDraw();
+            StorageManager.saveArrows();
+        },
+        clearStrokes() {
+            appState.strokes = [];
+            DrawManager.renderDraw();
+            StorageManager.saveStrokes();
+        },
+        setTool(tool) {
+            appState.tool = tool;
+            dom.toolArrowsBtn.classList.remove('active', 'alt');
+            dom.toolPenBtn.classList.remove('active', 'alt');
+            if (tool === 'arrows') {
+                dom.toolArrowsBtn.classList.add('active');
+                dom.toolPenBtn.classList.add('alt');
+                dom.toolArrowsBtn.textContent = 'Frecce: Attivo';
+                dom.toolPenBtn.textContent = 'Matita: Inattiva';
+            } else {
+                dom.toolPenBtn.classList.add('active');
+                dom.toolArrowsBtn.classList.add('alt');
+                dom.toolPenBtn.textContent = 'Matita: Attiva';
+                dom.toolArrowsBtn.textContent = 'Frecce: Inattive';
+            }
+            // Activar captura de eventos de puntero solo cuando dibujamos
+            if (tool === 'arrows' || tool === 'pen') dom.draw.style.pointerEvents = 'auto';
+            else dom.draw.style.pointerEvents = 'none';
+        },
+        undoLast() {
+            if (appState.arrows.length > appState.strokes.length) {
+                appState.arrows.pop();
+                StorageManager.saveArrows();
+            } else if (appState.strokes.length > 0) {
+                appState.strokes.pop();
+                StorageManager.saveStrokes();
+            }
+            DrawManager.renderDraw();
+        },
+        renderDraw() {
+            dom.draw.innerHTML = '';
+            // Renderizar Strokes (Líneas a mano alzada)
+            appState.strokes.forEach(stroke => {
+                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                const points = stroke.points.map(p => `${p.x},${p.y}`).join(' ');
+                polyline.setAttribute('points', points);
+                polyline.setAttribute('fill', 'none');
+                polyline.setAttribute('stroke', stroke.color);
+                polyline.setAttribute('stroke-width', stroke.width);
+                polyline.setAttribute('stroke-linecap', 'round');
+                polyline.setAttribute('stroke-linejoin', 'round');
+                if (stroke.dashed) polyline.setAttribute('stroke-dasharray', '12 8');
+                dom.draw.appendChild(polyline);
+            });
+
+            // Renderizar Arrows (Flechas)
+            appState.arrows.forEach(arrow => {
+                const { x1, y1, x2, y2, color, width, dashed } = arrow;
+                // Linea
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+                line.setAttribute('stroke', color); line.setAttribute('stroke-width', width);
+                line.setAttribute('stroke-linecap', 'round');
+                if (dashed) line.setAttribute('stroke-dasharray', '12 8');
+                dom.draw.appendChild(line);
+
+                // Punta de flecha (basado en el ángulo)
+                const angle = Math.atan2(y2 - y1, x2 - x1);
+                const size = width * 2.5;
+                const head = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                const points = [
+                    `${x2},${y2}`,
+                    `${x2 - size * Math.cos(angle - Math.PI / 6)},${y2 - size * Math.sin(angle - Math.PI / 6)}`,
+                    `${x2 - size * Math.cos(angle + Math.PI / 6)},${y2 - size * Math.sin(angle + Math.PI / 6)}`
+                ];
+                head.setAttribute('points', points.join(' '));
+                head.setAttribute('fill', color);
+                dom.draw.appendChild(head);
+            });
+            // Ocultar el preview de pase si existe
+            UnitsManager.clearPassPreview();
+        },
+        enableDrawing() {
+            dom.draw.addEventListener('pointerdown', DrawManager.onPointerDown, { passive: false });
+            dom.draw.addEventListener('pointerup', DrawManager.onPointerUp, { passive: false });
+        },
+        onPointerDown(e) {
+            if (e.button !== 0) return; // Solo click izquierdo
+            e.preventDefault();
+            const { x, y } = LayoutManager.clientToBoard(e);
+            appState.startPoint = { x, y };
+
+            if (appState.tool === 'arrows') {
+                appState.drawingArrow = true;
+                DrawManager.drawArrowPreview(x, y, x, y);
+            } else if (appState.tool === 'pen') {
+                appState.drawingStroke = true;
+                appState.currentStroke = {
+                    points: [{ x, y }],
+                    color: dom.strokeColorSel.value,
+                    width: dom.strokeWidthSel.value,
+                    dashed: dom.dashedToggle.checked
+                };
+            }
+
+            const onMove = ev => {
+                if (ev.pointerId !== e.pointerId) return;
+                ev.preventDefault();
+                const { x, y } = LayoutManager.clientToBoard(ev);
+                const currX = clamp(x, 0, WIDTH);
+                const currY = clamp(y, 0, HEIGHT);
+                if (appState.tool === 'arrows' && appState.drawingArrow) {
+                    DrawManager.drawArrowPreview(appState.startPoint.x, appState.startPoint.y, currX, currY);
+                } else if (appState.tool === 'pen' && appState.drawingStroke) {
+                    appState.currentStroke.points.push({ x: currX, y: currY });
+                    DrawManager.drawStrokePreview(appState.currentStroke);
+                }
+            };
+
+            const onUp = ev => {
+                if (ev.pointerId !== e.pointerId) return;
+                document.removeEventListener('pointermove', onMove);
+                document.removeEventListener('pointerup', onUp);
+                DrawManager.clearPreview();
+
+                const { x, y } = LayoutManager.clientToBoard(ev);
+                const endX = clamp(x, 0, WIDTH);
+                const endY = clamp(y, 0, HEIGHT);
+
+                if (appState.tool === 'arrows' && appState.drawingArrow) {
+                    if (dist(appState.startPoint.x, appState.startPoint.y, endX, endY) > 10) {
+                        appState.arrows.push({
+                            x1: appState.startPoint.x, y1: appState.startPoint.y,
+                            x2: endX, y2: endY,
+                            color: dom.strokeColorSel.value,
+                            width: dom.strokeWidthSel.value,
+                            dashed: dom.dashedToggle.checked
+                        });
+                        StorageManager.saveArrows();
+                    }
+                    appState.drawingArrow = false;
+                } else if (appState.tool === 'pen' && appState.drawingStroke) {
+                    if (appState.currentStroke.points.length > 1) {
+                        appState.strokes.push(appState.currentStroke);
+                        StorageManager.saveStrokes();
+                    }
+                    appState.drawingStroke = false;
+                    appState.currentStroke = null;
+                }
+                DrawManager.renderDraw();
+            };
+
+            document.addEventListener('pointermove', onMove, { passive: false });
+            document.addEventListener('pointerup', onUp, { passive: false });
+        },
+        drawArrowPreview(x1, y1, x2, y2) {
+            let line = document.getElementById('arrowPreviewLine');
+            let head = document.getElementById('arrowPreviewHead');
+            if (!line) {
+                line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                head = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                line.id = 'arrowPreviewLine';
+                head.id = 'arrowPreviewHead';
+                dom.draw.appendChild(line);
+                dom.draw.appendChild(head);
+            }
+            const color = dom.strokeColorSel.value;
+            const width = dom.strokeWidthSel.value;
+            const dashed = dom.dashedToggle.checked;
+
+            // Linea
+            line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+            line.setAttribute('stroke', color); line.setAttribute('stroke-width', width);
+            line.setAttribute('stroke-linecap', 'round');
+            if (dashed) line.setAttribute('stroke-dasharray', '12 8'); else line.removeAttribute('stroke-dasharray');
+
+            // Punta de flecha (basado en el ángulo)
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            const size = width * 2.5;
+            const points = [
+                `${x2},${y2}`,
+                `${x2 - size * Math.cos(angle - Math.PI / 6)},${y2 - size * Math.sin(angle - Math.PI / 6)}`,
+                `${x2 - size * Math.cos(angle + Math.PI / 6)},${y2 - size * Math.sin(angle + Math.PI / 6)}`
+            ];
+            head.setAttribute('points', points.join(' '));
+            head.setAttribute('fill', color);
+        },
+        drawStrokePreview(stroke) {
+            let polyline = document.getElementById('strokePreview');
+            if (!polyline) {
+                polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                polyline.id = 'strokePreview';
+                dom.draw.appendChild(polyline);
+            }
+            const points = stroke.points.map(p => `${p.x},${p.y}`).join(' ');
+            polyline.setAttribute('points', points);
+            polyline.setAttribute('fill', 'none');
+            polyline.setAttribute('stroke', stroke.color);
+            polyline.setAttribute('stroke-width', stroke.width);
+            polyline.setAttribute('stroke-linecap', 'round');
+            polyline.setAttribute('stroke-linejoin', 'round');
+            if (stroke.dashed) polyline.setAttribute('stroke-dasharray', '12 8'); else polyline.removeAttribute('stroke-dasharray');
+        },
+        clearPreview() {
+            const arr = document.getElementById('arrowPreviewLine'); if (arr) arr.remove();
+            const head = document.getElementById('arrowPreviewHead'); if (head) head.remove();
+            const strk = document.getElementById('strokePreview'); if (strk) strk.remove();
+        }
+    };
+
+
+    // --- GESTIÓN DE ANIMACIÓN (TimelineManager) ---
+    const TimelineManager = {
+        recordFrame() {
+            // Captura el estado actual
+            const players = [...dom.playersLayer.children].map(el => ({
+                team: el.dataset.team, number: +el.dataset.number,
+                x: parseFloat(el.style.left), y: parseFloat(el.style.top)
+            }));
+            const ball = { x: parseFloat(dom.ball.style.left) || WIDTH / 2, y: parseFloat(dom.ball.style.top) || HEIGHT / 2 };
+            const arrows = JSON.parse(JSON.stringify(appState.arrows));
+            const strokes = JSON.parse(JSON.stringify(appState.strokes));
+
+            // Si es un cuadro intermedio, lo inserta en la posición actual del scrubber
+            if (appState.playIndex < appState.timeline.length) {
+                appState.timeline.splice(appState.playIndex, 0, { players, ball, arrows, strokes });
+                appState.playIndex++; // Mover al nuevo frame
+            } else {
+                appState.timeline.push({ players, ball, arrows, strokes });
+                appState.playIndex = appState.timeline.length;
+            }
+
+            TimelineManager.updateScrubber();
+            StorageManager.saveTimeline();
+        },
+        clearTimeline() {
+            if (!confirm('¿Estás seguro de que quieres eliminar la animación? Esto no afecta las posiciones de inicio.')) return;
+            appState.timeline = [];
+            appState.playIndex = 0;
+            TimelineManager.updateScrubber();
+            StorageManager.saveTimeline();
+        },
+        renderInterpolatedFrame(fromIndex, t) {
+            // Clamp t
+            if (isNaN(t)) t = 0;
+            if (t < 0) t = 0;
+            if (t > 1) t = 1;
+
+            const f0 = appState.timeline[fromIndex];
+            const f1 = appState.timeline[fromIndex + 1];
+            if (!f0 || !f1) {
+                // fallback: mostrar frame actual
+                if (f0) TimelineManager.loadFrame(fromIndex);
+                return;
+            }
+
+            // Interpolar jugadores
+            const playersMap = new Map();
+            [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+            f0.players.forEach(p0 => {
+                const el = playersMap.get(p0.team + p0.number);
+                if (el) {
+                    const p1 = f1.players.find(pp => pp.team === p0.team && pp.number === p0.number) || p0;
+                    const ix = p0.x + (p1.x - p0.x) * t;
+                    const iy = p0.y + (p1.y - p0.y) * t;
+                    el.style.left = ix + 'px';
+                    el.style.top = iy + 'px';
+                }
+            });
+
+            // Interpolar balón
+            const bx = f0.ball.x + (f1.ball.x - f0.ball.x) * t;
+            const by = f0.ball.y + (f1.ball.y - f0.ball.y) * t;
+            UnitsManager.placeBall(bx, by);
+
+            // Dibujos: mantener los del frame origen (consistente y simple)
+            appState.arrows = JSON.parse(JSON.stringify(f0.arrows));
+            appState.strokes = JSON.parse(JSON.stringify(f0.strokes));
+            DrawManager.renderDraw();
+
+            // UI y rotación
+            appState.playIndex = fromIndex;
+            TimelineManager.updateScrubber();
+            LayoutManager.applyUprightTransforms();
+        },
+        loadFrame(index) {
+            const frame = appState.timeline[index];
+            if (!frame) return;
+
+            // Cargar Posiciones
+            const playersMap = new Map();
+            [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+            frame.players.forEach(p => {
+                const el = playersMap.get(p.team + p.number);
+                if (el) {
+                    el.style.left = p.x + 'px';
+                    el.style.top = p.y + 'px';
+                }
+            });
+
+            // Cargar Balón
+            UnitsManager.placeBall(frame.ball.x, frame.ball.y);
+
+            // Cargar Dibujos
+            appState.arrows = JSON.parse(JSON.stringify(frame.arrows));
+            appState.strokes = JSON.parse(JSON.stringify(frame.strokes));
+            DrawManager.renderDraw();
+
+            appState.playIndex = index;
+            TimelineManager.updateScrubber();
+            LayoutManager.applyUprightTransforms();
+        },
+        updateScrubber() {
+            const count = appState.timeline.length;
+            dom.frameCountEl.textContent = count;
+            dom.frameTotal.textContent = count;
+            dom.scrubber.max = Math.max(0, count - 1);
+            dom.scrubber.value = appState.playIndex;
+            dom.scrubberVal.textContent = appState.playIndex;
+            if (count === 0) dom.scrubber.value = 0;
+        },
+        handleScrubberChange(e) {
+            const index = parseInt(e.target.value);
+            if (index !== appState.playIndex && index < appState.timeline.length) {
+                TimelineManager.loadFrame(index);
+            }
+        },
+        play(timestamp) {
+            if (!appState.playing || appState.timeline.length < 2) {
+                appState.playing = false;
+                appState.paused = false;
+                dom.playBtn.textContent = 'Play';
+                return;
+            }
+
+            if (appState.paused) return;
+
+            const dur = (isNaN(appState.segmentDuration) || appState.segmentDuration < 16) ? 800 : appState.segmentDuration;
+
+            // Inicializar una sola vez desde el scrubber actual (si es inválido, usar 0)
+            if (appState.fromFrame == null) {
+                if (isNaN(appState.playIndex) || appState.playIndex < 0 || appState.playIndex >= appState.timeline.length - 1) {
+                    appState.playIndex = 0;
+                }
+                appState.fromFrame = appState.playIndex;
+                appState.segmentStartTime = timestamp;
+                // Render inicial (t=0)
+                TimelineManager.renderInterpolatedFrame(appState.fromFrame, 0);
+            }
+
+            // Si estamos en el último frame (no hay siguiente), finalizar
+            if (appState.fromFrame >= appState.timeline.length - 1) {
+                appState.playing = false;
+                appState.paused = false;
+                appState.fromFrame = null;
+                dom.playBtn.textContent = 'Play';
+                TimelineManager.updateScrubber();
+                return;
+            }
+
+            const elapsed = timestamp - appState.segmentStartTime;
+            let t = elapsed / dur;
+
+            if (t >= 1) {
+                // Avanzar al siguiente segmento
+                appState.fromFrame += 1;
+                appState.playIndex = appState.fromFrame;
+                appState.segmentStartTime = timestamp;
+
+                if (appState.fromFrame >= appState.timeline.length - 1) {
+                    // Cargar último frame exacto y terminar
+                    TimelineManager.loadFrame(appState.playIndex);
+                    appState.playing = false;
+                    appState.paused = false;
+                    appState.fromFrame = null;
+                    dom.playBtn.textContent = 'Play';
+                    TimelineManager.updateScrubber();
+                    return;
+                } else {
+                    // Render del nuevo segmento (t=0)
+                    TimelineManager.renderInterpolatedFrame(appState.fromFrame, 0);
+                }
+            } else {
+                // Render interpolado entre fromFrame y fromFrame+1
+                TimelineManager.renderInterpolatedFrame(appState.fromFrame, t);
+            }
+
+            appState.rafId = requestAnimationFrame(TimelineManager.play);
+        },
+        startPlay() {
+            if (appState.timeline.length < 2) return;
+            const val = parseInt(dom.speedInput.value);
+            appState.segmentDuration = (isNaN(val) || val < 16) ? 800 : val;
+            appState.playing = true;
+            appState.paused = false;
+            appState.fromFrame = null;
+            dom.playBtn.textContent = 'Playing...';
+            cancelAnimationFrame(appState.rafId);
+            appState.rafId = requestAnimationFrame(TimelineManager.play);
+        },
+        pausePlay() {
+            appState.paused = true;
+            try { cancelAnimationFrame(appState.rafId); } catch (e) {}
+            dom.playBtn.textContent = 'Play';
+            dom.pauseBtn.textContent = 'Paused';
+        },
+        stopPlay() {
+            appState.playing = false;
+            appState.paused = false;
+            appState.fromFrame = null;
+            try { cancelAnimationFrame(appState.rafId); } catch (e) {}
+            appState.fromFrame = null;
+            dom.playBtn.textContent = 'Play';
+            dom.pauseBtn.textContent = 'Pause';
+            cancelAnimationFrame(appState.rafId);
+            TimelineManager.loadFrame(0);
+        }
+    };
+
+
+    // --- GESTIÓN DE ALMACENAMIENTO (StorageManager) ---
+    const StorageManager = {
+        savePositions() {
+            const positions = [...dom.playersLayer.children].map(el => ({
+                team: el.dataset.team, number: +el.dataset.number,
+                x: parseFloat(el.style.left), y: parseFloat(el.style.top)
+            }));
+            localStorage.setItem(POS_KEY, JSON.stringify(positions));
+        },
+        loadPositions() {
+            const saved = localStorage.getItem(POS_KEY);
+            if (!saved) { UnitsManager.createPlayers(); return; }
+
+            const positions = JSON.parse(saved);
+            const playersMap = new Map();
+            UnitsManager.createPlayers(); // Crear los elementos primero
+
+            [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+
+            positions.forEach(p => {
+                const el = playersMap.get(p.team + p.number);
+                if (el) {
+                    el.style.left = p.x + 'px';
+                    el.style.top = p.y + 'px';
+                }
+            });
+            LayoutManager.applyUprightTransforms();
+        },
+        saveBall() {
+            const ball = centerOf(dom.ball);
+            localStorage.setItem(BALL_KEY, JSON.stringify(ball));
+        },
+        loadBall() {
+            const saved = localStorage.getItem(BALL_KEY);
+            if (!saved) return;
+            const pos = JSON.parse(saved);
+            UnitsManager.placeBall(pos.x, pos.y);
+        },
+        saveArrows() { localStorage.setItem(ARROW_KEY, JSON.stringify(appState.arrows)); },
+        loadArrows() {
+            const saved = localStorage.getItem(ARROW_KEY);
+            if (saved) appState.arrows = JSON.parse(saved);
+        },
+        saveStrokes() { localStorage.setItem(STROKE_KEY, JSON.stringify(appState.strokes)); },
+        loadStrokes() {
+            const saved = localStorage.getItem(STROKE_KEY);
+            if (saved) appState.strokes = JSON.parse(saved);
+        },
+        saveTimeline() {
+            localStorage.setItem(TL_KEY, JSON.stringify(appState.timeline));
+        },
+        loadTimeline() {
+            const saved = localStorage.getItem(TL_KEY);
+            if (saved) appState.timeline = JSON.parse(saved);
+            TimelineManager.updateScrubber();
+        },
+        exportTimeline() {
+            const json = JSON.stringify(appState.timeline, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = (dom.playNameInput.value?.trim() || 'lavagna') + '_animazione.json';
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+        },
+        importTimeline() {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'application/json';
+            input.onchange = e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = e => {
+                    try {
+                        const json = e.target.result;
+                        const timeline = JSON.parse(json);
+                        if (Array.isArray(timeline) && timeline.every(f => f.players && f.ball)) {
+                            appState.timeline = timeline;
+                            StorageManager.saveTimeline();
+                            TimelineManager.loadFrame(0);
+                            alert(`Animazione importata: ${timeline.length} frames.`);
+                        } else {
+                            throw new Error("Formato JSON non valido per la timeline.");
+                        }
+                    } catch (err) {
+                        alert(`Errore nell'importazione: ${err.message}`);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        },
+        savePlay() {
+            const name = dom.playNameInput.value?.trim();
+            if (!name) { alert('Inserisci un nome per la giocata.'); return; }
+            if (appState.timeline.length === 0) { alert('Aggiungi almeno un frame all\'animazione per salvare la giocata.'); return; }
+            
+            const playData = {
+                name,
+                timeline: appState.timeline,
+                arrows: appState.arrows,
+                strokes: appState.strokes,
+                positions: [...dom.playersLayer.children].map(el => ({ team: el.dataset.team, number: +el.dataset.number, x: parseFloat(el.style.left), y: parseFloat(el.style.top) })),
+                ball: centerOf(dom.ball),
+            };
+
+            try {
+                localStorage.setItem(PLAY_PREFIX + name, JSON.stringify(playData));
+                StorageManager.updatePlaySelect();
+                alert(`Giocata "${name}" salvata con successo.`);
+            } catch (e) {
+                alert('Errore nel salvataggio. Memoria piena o nome non valido.');
+            }
+        },
+        loadPlay(name) {
+            const rawData = localStorage.getItem(PLAY_PREFIX + name);
+            if (!rawData) return;
+            const playData = JSON.parse(rawData);
+
+            // 1. Carica Timeline
+            appState.timeline = playData.timeline || [];
+            TimelineManager.updateScrubber();
+            
+            // 2. Carica Disegni
+            appState.arrows = playData.arrows || [];
+            appState.strokes = playData.strokes || [];
+            
+            // 3. Carga Posiciones y Ball (usando el primer frame de la timeline si existe, sino las de `positions`/`ball` si existen)
+            if (appState.timeline.length > 0) {
+                TimelineManager.loadFrame(0);
+            } else if (playData.positions) {
+                const playersMap = new Map();
+                [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+                playData.positions.forEach(p => {
+                    const el = playersMap.get(p.team + p.number);
+                    if (el) {
+                        el.style.left = p.x + 'px';
+                        el.style.top = p.y + 'px';
+                    }
+                });
+                UnitsManager.placeBall(playData.ball.x, playData.ball.y);
+                DrawManager.renderDraw();
+            } else {
+                // Si no hay nada, al menos renderiza los dibujos cargados
+                DrawManager.renderDraw();
+            }
+
+            dom.playNameInput.value = name;
+            StorageManager.saveTimeline();
+            StorageManager.saveArrows();
+            StorageManager.saveStrokes();
+            StorageManager.savePositions();
+            StorageManager.saveBall();
+            LayoutManager.applyUprightTransforms();
+        },
+        duplicatePlay() {
+            const originalName = dom.playNameInput.value?.trim();
+            if (!originalName) { alert('Carica prima una giocata per duplicarla.'); return; }
+            const newName = prompt(`Duplicar "${originalName}" como:`);
+            if (newName && newName.trim()) {
+                const rawData = localStorage.getItem(PLAY_PREFIX + originalName);
+                if (rawData) {
+                    localStorage.setItem(PLAY_PREFIX + newName.trim(), rawData);
+                    dom.playNameInput.value = newName.trim();
+                    StorageManager.updatePlaySelect();
+                    dom.loadPlaySel.value = newName.trim();
+                    alert(`Giocata duplicata como "${newName.trim()}".`);
+                }
+            }
+        },
+        deletePlay() {
+            const name = dom.loadPlaySel.value;
+            if (name && confirm(`¿Estás seguro de que quieres eliminar la giocata "${name}"?`)) {
+                localStorage.removeItem(PLAY_PREFIX + name);
+                StorageManager.updatePlaySelect();
+                dom.playNameInput.value = '';
+                alert(`Giocata "${name}" eliminada.`);
+            }
+        },
+        updatePlaySelect() {
+            dom.loadPlaySel.innerHTML = '<option value="">-- Carica giocata salvata --</option>';
+            const plays = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith(PLAY_PREFIX)) {
+                    plays.push(key.substring(PLAY_PREFIX.length));
+                }
+            }
+            plays.sort().forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                dom.loadPlaySel.appendChild(option);
+            });
+        }
+    };
+
+
+    // --- EXPORTACIÓN (ExportManager) ---
+    const ExportManager = {
+        // --- Funciones de dibujo a Canvas ---
+        drawPitch(ctx) {
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+            // Fondo de campo (Verde)
+            ctx.fillStyle = '#137a46'; 
+            ctx.fillRect(0, 0, WIDTH, HEIGHT); 
+
+            // Obtener el contenido SVG del campo (líneas)
+            const svgEl = dom.board.querySelector('.lines');
+            if (!svgEl) return;
+
+            // Inyectar etiquetas si están activadas (para consistencia con el DOM visible)
+            let tempLabels = [];
+            if (dom.toggleLabelsBtn.classList.contains('active')) {
+                [...dom.playersLayer.children].forEach(el => {
+                    const rect = el.getBoundingClientRect();
+                    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    label.classList.add('label');
+                    label.setAttribute('x', parseFloat(el.style.left) - 10); 
+                    label.setAttribute('y', parseFloat(el.style.top) + 25); 
+                    label.textContent = el.textContent;
+                    svgEl.appendChild(label);
+                    tempLabels.push(label);
+                });
+            }
+
+            const svgData = new XMLSerializer().serializeToString(svgEl);
+            const img = new Image();
+            
+            // Usar un temporal Promise/Callback para esperar a que el SVG se cargue como imagen
+            return new Promise(resolve => {
+                img.onload = () => {
+                    ctx.drawImage(img, 0, 0);
+                    tempLabels.forEach(l => l.remove()); // Limpiar etiquetas inyectadas
+                    resolve();
+                };
+                img.onerror = (e) => {
+                    console.error("Error cargando SVG del campo en canvas:", e);
+                    tempLabels.forEach(l => l.remove()); // Limpiar etiquetas inyectadas incluso en error
+                    resolve(); // Resuelve para no bloquear la exportación
+                };
+                img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+            });
+        },
+        drawPlayer(ctx, p) {
+            const size = 40;
+            const radius = size / 2;
+            const font = 'bold 14px system-ui';
+            
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            
+            // En modo vertical, los jugadores están rotados -90deg. Hay que compensar.
+            // Esto solo aplica si se está exportando una imagen estática con la rotación del canvas/wrap no aplicada. 
+            // Como el canvas de exportación es plano (no rotado), no rotamos aquí a menos que queramos el texto girado.
+            // Dejamos la rotación fuera para que el número se vea derecho.
+
+            // Círculo
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2, true);
+            ctx.fillStyle = (p.team === 'blue' ? '#0d6efd' : '#e63946');
+            ctx.fill();
+
+            // Borde
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Número
+            ctx.fillStyle = '#fff';
+            ctx.font = font;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(p.number, 0, 1);
+            
+            ctx.restore();
+        },
+        drawBall(ctx, b) {
+            const W = 50, H = 30;
+            ctx.save();
+            ctx.translate(b.x, b.y);
+            ctx.rotate(-15 * Math.PI / 180); // Rotación de CSS
+
+            // Balón (elipse aproximada)
+            ctx.beginPath();
+            ctx.ellipse(0, 0, W / 2, H / 2, 0, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffd400';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Cordones/Borde interno (aproximación)
+            ctx.beginPath();
+            ctx.setLineDash([8, 6]);
+            ctx.ellipse(0, 0, W / 2 - 6, H / 2 - 6, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0,0,0,.25)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+        },
+        drawStroke(ctx, s) {
+            if (s.points.length < 2) return;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(s.points[0].x, s.points[0].y);
+            for (let i = 1; i < s.points.length; i++) {
+                ctx.lineTo(s.points[i].x, s.points[i].y);
+            }
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = s.width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            if (s.dashed) ctx.setLineDash([12, 8]);
+            ctx.stroke();
+            ctx.restore();
+        },
+        drawArrow(ctx, a) {
+            const { x1, y1, x2, y2, color, width, dashed } = a;
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            const size = width * 2.5;
+
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineCap = 'round';
+            if (dashed) ctx.setLineDash([12, 8]);
+
+            // Linea
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+
+            // Punta de flecha
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 6), y2 - size * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(x2 - size * Math.cos(angle + Math.PI / 6), y2 - size * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        },
+
+        getCurrentPlayersFromDOM() { return [...dom.playersLayer.children].map(el => ({ team: el.dataset.team, number: +el.dataset.number, x: parseFloat(el.style.left), y: parseFloat(el.style.top) })); },
+        getCurrentBallFromDOM() { return { x: parseFloat(dom.ball.style.left) || WIDTH / 2, y: parseFloat(dom.ball.style.top) || HEIGHT / 2 }; },
+
+        async renderFrameToCanvas(playersArr, ballPos, includeOverlays = true) {
+            // Limpia y dibuja el pitch primero (asíncrono porque espera la carga del SVG)
+            await ExportManager.drawPitch(dom.ctx); 
+            
+            // Dibuja el resto de elementos
+            playersArr.forEach(p => ExportManager.drawPlayer(dom.ctx, p)); 
+            ExportManager.drawBall(dom.ctx, ballPos);
+            
+            if (includeOverlays) { 
+                appState.strokes.forEach(s => ExportManager.drawStroke(dom.ctx, s)); 
+                appState.arrows.forEach(a => ExportManager.drawArrow(dom.ctx, a)); 
+            }
+        },
+
+        // --- Lógica de Exportación ---
+
+        setupExportUI() {
+            
+            // Deshabilitar MP4 si FFmpeg no está presente
+            if (!window.FFmpeg) {
+                dom.exportMp4Btn.disabled = true;
+                dom.exportMp4Btn.textContent = 'Exportar MP4 (instalar ffmpeg.wasm)';
+            }
+dom.exportJpgBtn.addEventListener('click', async () => {
+                const playersNow = ExportManager.getCurrentPlayersFromDOM();
+                const ballNow = ExportManager.getCurrentBallFromDOM();
+                
+                // Renderiza el frame actual en el canvas
+                await ExportManager.renderFrameToCanvas(playersNow, ballNow, true);
+                
+                // Exporta la imagen del canvas
+                const url = dom.exportCanvas.toDataURL('image/jpeg', 0.95);
+                const a = document.createElement('a'); a.href = url; 
+                a.download = (dom.playNameInput.value?.trim() || 'lavagna') + '_frame.jpg'; 
+                document.body.appendChild(a); a.click(); a.remove();
+            });
+
+            // Lógica de exportación WebM...
+            dom.exportVideoBtn.addEventListener('click', async () => {
+                if (appState.timeline.length < 2) { alert('Añade al menos 2 frames a la animación para exportar video.'); return; }
+                if (!window.MediaRecorder) { alert('Tu navegador no soporta MediaRecorder para exportar WebM.'); return; }
+
+                const stream = dom.exportCanvas.captureStream(30); // 30 FPS
+                const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+                const chunks = [];
+                let isRecording = true;
+                
+                dom.exportVideoBtn.textContent = 'Grabando...';
+                dom.exportVideoBtn.disabled = true;
+
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url;
+                    a.download = (dom.playNameInput.value?.trim() || 'lavagna') + '_animazione.webm';
+                    document.body.appendChild(a); a.click(); a.remove();
+                    URL.revokeObjectURL(url);
+                    dom.exportVideoBtn.textContent = 'Exportar video (WebM)';
+                    dom.exportVideoBtn.disabled = false;
+                    TimelineManager.loadFrame(0); // Vuelve al frame 0
+                };
+
+                recorder.start();
+                
+                // Duración y control de frames
+                const duration = parseInt(dom.speedInput.value);
+                const totalFrames = appState.timeline.length;
+                let currentFrame = 0;
+
+                const runFrame = async () => {
+                    if (currentFrame >= totalFrames || !isRecording) {
+                        recorder.stop();
+                        return;
+                    }
+
+                    // Renderiza el frame actual
+                    const frameData = appState.timeline[currentFrame];
+                    await ExportManager.renderFrameToCanvas(frameData.players, frameData.ball, true);
+                    
+                    currentFrame++;
+                    setTimeout(runFrame, duration);
+                };
+                
+                // Iniciar la grabación
+                await runFrame();
+
+            });
+
+            // Lógica de exportación MP4 con FFmpeg... (Mantenida sin cambios en la parte FFmpeg)
+            dom.exportMp4Btn.addEventListener('click', async () => {
+                // ... (código FFmpeg se asume correcto, solo se actualiza la llamada a renderFrameToCanvas)
+                if (appState.timeline.length < 2) { alert('Añade al menos 2 frames a la animación para exportar video.'); return; }
+                dom.exportMp4Btn.textContent = 'Iniciando FFmpeg...';
+                dom.exportMp4Btn.disabled = true;
+
+                const duration = parseInt(dom.speedInput.value);
+                const fps = Math.max(1, Math.floor(1000 / duration)); // Calcular FPS basándose en la duración de cada frame
+
+                if (!window.FFmpeg || typeof FFmpeg.createFFmpeg !== 'function') {
+                    alert('FFmpeg no está cargado. Usa "Exportar video (WebM)" (recomendado) o añade ffmpeg.wasm para habilitar MP4.');
+                    dom.exportMp4Btn.textContent = 'Exportar MP4 (requiere ffmpeg.wasm)';
+                    dom.exportMp4Btn.disabled = false;
+                    dom.ffmpegStatus.textContent = '';
+                    return;
+                }
+                const { createFFmpeg, fetchFile } = FFmpeg;
+                const ffmpeg = createFFmpeg({ log: false });
+                
+                try{
+                    dom.ffmpegStatus.textContent = 'Cargando núcleo FFmpeg (esto puede tardar la primera vez)...';
+                    await ffmpeg.load();
+                    dom.ffmpegStatus.textContent = 'Generando frames...';
+
+                    const totalFrames = appState.timeline.length;
+                    for(let i=0; i<totalFrames; i++){
+                        const frameData = appState.timeline[i];
+                        await ExportManager.renderFrameToCanvas(frameData.players, frameData.ball, true);
+                        const dataURL = dom.exportCanvas.toDataURL('image/jpeg', 0.95);
+                        const base64 = dataURL.split(',')[1];
+                        const binary = atob(base64);
+                        const array = new Uint8Array(binary.length);
+                        for (let j = 0; j < binary.length; j++) {
+                            array[j] = binary.charCodeAt(j);
+                        }
+                        ffmpeg.FS('writeFile', `frame_${String(i).padStart(4, '0')}.jpg`, array);
+                        dom.ffmpegStatus.textContent = `Generando frames: ${i + 1}/${totalFrames}`;
+                    }
+
+                    dom.ffmpegStatus.textContent = 'Codificando MP4 (puede tardar)...';
+                    dom.exportMp4Btn.textContent = 'Codificando...';
+
+                    // ffmpeg -framerate 1 -i frame_%04d.jpg -c:v libx264 -pix_fmt yuv420p output.mp4
+                    const inputPattern = `frame_%04d.jpg`;
+                    const outputName = 'output.mp4';
+                    
+                    await ffmpeg.run('-framerate', String(fps), '-i', inputPattern, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', outputName);
+                    
+                    const data = ffmpeg.FS('readFile', outputName);
+                    const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+                    const url = URL.createObjectURL(mp4Blob);
+                    const a = document.createElement('a'); a.href = url; a.download = (dom.playNameInput.value?.trim() || 'lavagna') + '_animazione.mp4';
+                    document.body.appendChild(a); a.click();
+                    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); dom.ffmpegStatus.textContent = 'MP4 listo.'; }, 500);
+
+                    // Limpieza
+                    for(let i=0; i<totalFrames; i++){
+                        try{ ffmpeg.FS('unlink',`frame_${String(i).padStart(4, '0')}.jpg`); }catch{}
+                    }
+                    try{ ffmpeg.FS('unlink','output.mp4'); }catch{}
+
+                }catch(err){
+                    console.error(err);
+                    dom.ffmpegStatus.textContent = 'No se pudo convertir a MP4 en este navegador. Usá el WebM.';
+                    alert('Si falla MP4, descargá el WebM; puedo sumar otra ruta de conversión.');
+                } finally {
+                    dom.exportMp4Btn.textContent = 'Exportar MP4 (beta)';
+                    dom.exportMp4Btn.disabled = false;
+                    TimelineManager.loadFrame(0); // Vuelve al frame 0
+                }
+            });
+        },
+    };
+
+
+    // --- UI/EVENT HANDLERS ---
+    const UIManager = {
+        setupEventListeners() {
+            // Layout
+            window.addEventListener('resize', LayoutManager.fitBoard);
+            dom.verticalFieldChk.addEventListener('change', () => { 
+                appState.layout.forceVertical = dom.verticalFieldChk.checked;
+                LayoutManager.fitBoard();
+            });
+
+            // Menu/Sidebar
+            dom.menuBtn.addEventListener('click', () => { dom.sidebar.classList.add('open'); dom.scrim.classList.add('show'); });
+            dom.closeMenuBtn.addEventListener('click', () => { dom.sidebar.classList.remove('open'); dom.scrim.classList.remove('show'); });
+            dom.scrim.addEventListener('click', () => { dom.sidebar.classList.remove('open'); dom.scrim.classList.remove('show'); });
+
+            // Controles
+            dom.resetBtn.addEventListener('click', () => { UnitsManager.createPlayers(); UnitsManager.placeBall(); DrawManager.clearDraw(); StorageManager.savePositions(); StorageManager.saveBall(); StorageManager.saveArrows(); StorageManager.saveStrokes(); });
+            dom.snapToggle.addEventListener('change', () => { LayoutManager.renderGrid(); });
+            dom.toggleLabelsBtn.addEventListener('click', (e) => {
+                e.target.classList.toggle('active');
+                e.target.textContent = e.target.classList.contains('active') ? 'Ocultar etichette' : 'Mostra etichette';
+                [...dom.playersLayer.children].forEach(el => el.style.fontSize = e.target.classList.contains('active') ? 'var(--player-font)' : '0');
+            });
+
+            // Dibujo
+            dom.toolArrowsBtn.addEventListener('click', () => DrawManager.setTool('arrows'));
+            dom.toolPenBtn.addEventListener('click', () => DrawManager.setTool('pen'));
+            dom.undoGenericBtn.addEventListener('click', DrawManager.undoLast);
+            dom.clearArrowsBtn.addEventListener('click', DrawManager.clearArrows);
+            dom.clearAllBtn.addEventListener('click', () => { if (confirm('¿Quieres eliminar todos los dibujos (frecce y líneas)?')) DrawManager.clearDraw(); });
+
+            // Giocate/Plays
+            dom.savePlayBtn.addEventListener('click', StorageManager.savePlay);
+            dom.loadPlaySel.addEventListener('change', (e) => { if (e.target.value) StorageManager.loadPlay(e.target.value); });
+            dom.deletePlayBtn.addEventListener('click', StorageManager.deletePlay);
+            dom.duplicatePlayBtn.addEventListener('click', StorageManager.duplicatePlay);
+
+            // Animación
+            dom.recordStepBtn.addEventListener('click', TimelineManager.recordFrame);
+            dom.scrubber.addEventListener('input', TimelineManager.handleScrubberChange);
+            dom.scrubber.addEventListener('change', TimelineManager.handleScrubberChange);
+            dom.prevFrameBtn.addEventListener('click', () => TimelineManager.loadFrame(Math.max(0, appState.playIndex - 1)));
+            dom.nextFrameBtn.addEventListener('click', () => TimelineManager.loadFrame(Math.min(appState.timeline.length - 1, appState.playIndex + 1)));
+            dom.playBtn.addEventListener('click', TimelineManager.startPlay);
+            dom.pauseBtn.addEventListener('click', TimelineManager.pausePlay);
+            dom.stopBtn.addEventListener('click', TimelineManager.stopPlay);
+            dom.clearTimelineBtn.addEventListener('click', TimelineManager.clearTimeline);
+            dom.exportTimelineBtn.addEventListener('click', StorageManager.exportTimeline);
+            dom.importTimelineBtn.addEventListener('click', StorageManager.importTimeline);
+
+            // Exportación
+            ExportManager.setupExportUI();
+        }
+    };
 
     // ===== INIT =====
-    function renderGridInit(){ renderGrid(); }
-    function enableDragBallSave(){ enableDragBall(() => { saveBall(); if (autoRecordChk.checked) recordFrame(); }); }
-
     function init(){
-      renderGridInit(); setTool('arrows');
-      createPlayers(); loadPositions();
-      loadArrows(); loadStrokes(); renderDraw();
-      placeBall(WIDTH/2, HEIGHT/2); loadBall();
-      loadTimeline(); updateFrameCount();
-      fitBoard(); requestAnimationFrame(fitBoard);
-      if (!timeline.length) { recordFrame(); updateFrameCount(); }
-      gotoFrame(0);
+        LayoutManager.renderGrid(); 
+        DrawManager.setTool('arrows');
+        UnitsManager.createPlayers(); 
+        StorageManager.loadPositions();
+        StorageManager.loadArrows(); 
+        StorageManager.loadStrokes(); 
+        DrawManager.renderDraw();
+        UnitsManager.placeBall(WIDTH/2, HEIGHT/2); 
+        StorageManager.loadBall();
+        StorageManager.loadTimeline(); 
+        TimelineManager.updateScrubber();
+        
+        // Frame inicial automático si no hay timeline
+        if (!Array.isArray(appState.timeline) || appState.timeline.length === 0) {
+            TimelineManager.recordFrame();
+            appState.playIndex = 0;
+            TimelineManager.updateScrubber();
+            StorageManager.saveTimeline();
+        }
+UIManager.setupEventListeners();
+        DrawManager.enableDrawing();
+        dom.draw.style.pointerEvents = 'auto';
+        UnitsManager.enableDragBall(() => { StorageManager.saveBall(); if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); });
+        StorageManager.updatePlaySelect();
+        LayoutManager.fitBoard(); // Ajuste inicial del layout
     }
 
-    enableDragBallSave();
     init();
   </script>
 </body>
 </html>
-
