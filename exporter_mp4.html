@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Exportador MP4 — Lavagna</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#0b1320; color:#e6eef9; }
+    header { padding: 12px 16px; border-bottom:1px solid #1b2737; display:flex; align-items:center; gap:10px; }
+    h1 { font-size: 16px; margin:0; flex:1; }
+    #log { font-variant-numeric: tabular-nums; opacity:.9; white-space:pre-wrap; }
+    #bar { height:4px; background:#122033; border-radius:999px; overflow:hidden; }
+    #bar > i { display:block; height:100%; width:0%; background:#48a2ff; transition:width .15s linear; }
+    main { padding:16px; display:grid; gap:12px; }
+    .row { display:flex; align-items:center; gap:10px; }
+    button { background:#18283d; border:1px solid #28425f; color:#e6eef9; padding:8px 12px; border-radius:8px; cursor:pointer; }
+    button[disabled] { opacity:.6; cursor:not-allowed; }
+    canvas { background:#0e1a2b; border:1px solid #1c3047; border-radius:8px; width: min(100%, 960px); height: auto; }
+    small { opacity:.7 }
+  </style>
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Exportador MP4 (aislado)</h1>
+    <button id="closeBtn" title="Cerrar">Cerrar</button>
+  </header>
+  <main>
+    <div class="row" style="justify-content:space-between">
+      <div id="log">Esperando datos…</div>
+    </div>
+    <div id="bar"><i></i></div>
+    <div class="row" style="gap:20px;flex-wrap:wrap">
+      <div class="col">
+        <div class="row" style="gap:8px">
+          <label>Resolución: </label>
+          <select id="scaleSel">
+            <option value="1">1× (igual al tablero)</option>
+            <option value="1.5">1.5×</option>
+            <option value="2" selected>2× (recomendado)</option>
+          </select>
+          <label>FPS: </label>
+          <select id="fpsSel">
+            <option value="30">30</option>
+            <option value="60" selected>60</option>
+          </select>
+          <label>Calidad (CRF):</label>
+          <select id="crfSel">
+            <option value="16">16 (muy alta)</option>
+            <option value="18" selected>18 (alta)</option>
+            <option value="20">20</option>
+            <option value="22">22</option>
+          </select>
+        </div>
+        <div class="row" style="gap:8px">
+          <button id="startBtn" disabled>Comenzar exportación</button>
+          <small id="hint">(se inicia solo al recibir datos)</small>
+        </div>
+      </div>
+    </div>
+    <canvas id="c" width="1280" height="720"></canvas>
+    <small>Este canvas es solo del exportador (no toca tu app).</small>
+  </main>
+
+<script>
+(function(){
+  const $ = (sel)=>document.querySelector(sel);
+  const logEl = $("#log");
+  const barEl = $("#bar > i");
+  const canvas = $("#c");
+  const ctx = canvas.getContext("2d");
+
+  const state = {
+    name: "lavagna",
+    width: 1280,
+    height: 720,
+    segmentDuration: 800,
+    timeline: [],
+    frames: null,
+    scale: 2,
+    fps: 60,
+    crf: 18,
+  };
+
+  function log(msg){ logEl.textContent = msg; }
+  function progress(pct){ barEl.style.width = Math.max(0, Math.min(100, pct)) + "%"; }
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  window.addEventListener("message", (ev)=>{
+    const d = ev.data;
+    if (!d || typeof d !== "object") return;
+    if (!d.timeline && !d.frames) return;
+
+    if (d.name) state.name = String(d.name);
+    if (d.width) state.width = Math.max(16, Math.floor(d.width));
+    if (d.height) state.height = Math.max(16, Math.floor(d.height));
+    if (d.segmentDuration) state.segmentDuration = Math.max(16, Math.floor(d.segmentDuration));
+    if (Array.isArray(d.timeline)) state.timeline = d.timeline;
+    if (Array.isArray(d.frames)) state.frames = d.frames;
+
+    $("#startBtn").disabled = false;
+    $("#hint").textContent = "Datos recibidos ✔";
+    log("Datos recibidos. Elegí presets y comienza cuando quieras.");
+  });
+
+  window.opener?.postMessage("EXPORTER_READY", "*");
+
+  $("#scaleSel").addEventListener("change", (e)=> state.scale = parseFloat(e.target.value));
+  $("#fpsSel").addEventListener("change", (e)=> state.fps = parseInt(e.target.value));
+  $("#crfSel").addEventListener("change", (e)=> state.crf = parseInt(e.target.value));
+  $("#closeBtn").addEventListener("click", ()=> window.close());
+  $("#startBtn").addEventListener("click", startExport);
+
+  function drawPitch(ctx){
+    const W = state.width, H = state.height;
+    ctx.fillStyle = "#17623b"; ctx.fillRect(0,0,W,H);
+    for (let i=0;i<10;i++){
+      ctx.fillStyle = (i%2)? "#196d41" : "#1d7948";
+      ctx.fillRect((i*W)/10, 0, W/10, H);
+    }
+    ctx.strokeStyle = "rgba(255,255,255,.9)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(8,8,W-16,H-16);
+    ctx.setLineDash([8,8]); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,.7)";
+    [H*0.2, H*0.8].forEach(y=>{ctx.beginPath(); ctx.moveTo(20,y); ctx.lineTo(W-20,y); ctx.stroke();});
+    ctx.setLineDash([]); ctx.lineWidth = 4; ctx.strokeStyle = "rgba(255,255,255,.8)";
+    [0.1,0.25,0.5,0.75,0.9].forEach(xp=>{const x=W*xp; ctx.beginPath(); ctx.moveTo(x,16); ctx.lineTo(x,H-16); ctx.stroke();});
+  }
+  function drawPlayer(ctx,p){
+    const r = 14;
+    const color = (String(p.team||"").toLowerCase().startsWith("r")) ? "#e74c3c" : "#2d8cff";
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#06121f"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.font = "bold 12px ui-sans-serif,system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    if (p.number!=null) ctx.fillText(String(p.number), p.x, p.y);
+  }
+  function drawBall(ctx,b){
+    const r=6;
+    ctx.fillStyle="#ffcc00"; ctx.beginPath(); ctx.arc(b.x,b.y,r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#a67900"; ctx.lineWidth=2; ctx.stroke();
+  }
+  function drawArrow(ctx,a){
+    ctx.save();
+    ctx.strokeStyle = a.color || "#ffd54d";
+    ctx.lineWidth = a.width || 4;
+    if (a.dashed) ctx.setLineDash([10,8]); else ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(a.x1, a.y1); ctx.lineTo(a.x2, a.y2); ctx.stroke();
+    const angle = Math.atan2(a.y2-a.y1, a.x2-a.x1);
+    const L = 12 + (a.width||4);
+    ctx.beginPath();
+    ctx.moveTo(a.x2, a.y2);
+    ctx.lineTo(a.x2 - L*Math.cos(angle - Math.PI/6), a.y2 - L*Math.sin(angle - Math.PI/6));
+    ctx.lineTo(a.x2 - L*Math.cos(angle + Math.PI/6), a.y2 - L*Math.sin(angle + Math.PI/6));
+    ctx.closePath(); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+    ctx.restore();
+  }
+  function drawStroke(ctx,s){
+    ctx.save();
+    ctx.strokeStyle = s.color || "#ffd54d";
+    ctx.lineWidth = s.width || 3;
+    if (s.dashed) ctx.setLineDash([8,6]); else ctx.setLineDash([]);
+    const pts = s.points||[]; if (pts.length<2){ ctx.restore(); return; }
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawFrame(ctx, frame){
+    ctx.clearRect(0,0,state.width,state.height);
+    drawPitch(ctx);
+    const players = Array.isArray(frame.players) ? frame.players : [];
+    players.forEach(p => drawPlayer(ctx,p));
+    if (frame.ball) drawBall(ctx, frame.ball);
+    (frame.strokes||[]).forEach(s=> drawStroke(ctx,s));
+    (frame.arrows||[]).forEach(a=> drawArrow(ctx,a));
+  }
+
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function interpPlayers(p0s,p1s,t){
+    const out=[]; const byId=new Map((p1s||[]).map(p=>[p.team+':'+p.number,p]));
+    (p0s||[]).forEach(p0=>{
+      const p1 = byId.get(p0.team+':'+p0.number) || p0;
+      out.push({ team:p0.team, number:p0.number, x: lerp(p0.x,p1.x,t), y: lerp(p0.y,p1.y,t) });
+    });
+    return out;
+  }
+
+  function toPNG(){ return canvas.toDataURL("image/png"); }
+  function dataURLtoU8(url){
+    const b64 = url.split(",")[1]; const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  async function startExport(){
+    try {
+      $("#startBtn").disabled = true;
+      const scale = parseFloat($("#scaleSel").value||"2");
+      const fps = parseInt($("#fpsSel").value||"60");
+      const crf = parseInt($("#crfSel").value||"18");
+
+      canvas.width  = Math.round(state.width * scale);
+      canvas.height = Math.round(state.height * scale);
+      ctx.setTransform(scale,0,0,scale,0,0);
+      ctx.imageSmoothingEnabled = true;
+
+      if (!window.FFmpeg || typeof FFmpeg.createFFmpeg !== "function") {
+        log("FFmpeg no está cargado. Verificá conexión o usa WebM.");
+        $("#startBtn").disabled = false;
+        return;
+      }
+      log("Cargando FFmpeg…"); progress(3);
+      const { createFFmpeg } = FFmpeg;
+      const ff = createFFmpeg({ log:false, corePath:'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js' });
+      await ff.load();
+
+      if (Array.isArray(state.frames) && state.frames.length){
+        log("Escribiendo frames…");
+        for (let i=0;i<state.frames.length;i++){
+          const u8 = dataURLtoU8(state.frames[i]);
+          const name = `frame_${String(i).padStart(5,'0')}.png`;
+          await ff.FS('writeFile', name, u8);
+          if (i%20===0) progress(5 + (i/state.frames.length)*40);
+          await sleep(0);
+        }
+        await encode(ff, state.name, state.frames.length, fps, crf);
+        return;
+      }
+
+      const tl = state.timeline;
+      const segMs = Math.max(16, state.segmentDuration);
+      const stepsPerSeg = Math.max(1, Math.round((segMs) / (1000/fps)));
+      const totalSegs = Math.max(0, (tl?.length||0) - 1);
+      const totalFrames = totalSegs*stepsPerSeg + 1;
+      let frameNo = 0;
+
+      log(`Generando ${totalFrames} frames (PNG)…`);
+      for (let s=0; s<totalSegs; s++){
+        for (let k=0;k<stepsPerSeg;k++){
+          const t = k/stepsPerSeg;
+          const f0 = tl[s], f1 = tl[s+1] || f0;
+          const frame = {
+            players: interpPlayers(f0.players||[], f1.players||[], t),
+            ball: { x: lerp(f0.ball?.x ?? state.width/2, f1.ball?.x ?? f0.ball?.x ?? state.width/2, t),
+                    y: lerp(f0.ball?.y ?? state.height/2, f1.ball?.y ?? f0.ball?.y ?? state.height/2, t) },
+            strokes: f0.strokes||[],
+            arrows: f0.arrows||[],
+          };
+          drawFrame(ctx, frame);
+          const u8 = dataURLtoU8(toPNG());
+          const name = `frame_${String(frameNo++).padStart(5,'0')}.png`;
+          await ff.FS('writeFile', name, u8);
+          if (frameNo % 20 === 0) progress(5 + (frameNo/totalFrames)*40);
+          await sleep(0);
+        }
+      }
+      drawFrame(ctx, tl[tl.length-1]);
+      await ff.FS('writeFile', `frame_${String(frameNo++).padStart(5,'0')}.png`, dataURLtoU8(toPNG()));
+      progress(45);
+
+      await encode(ff, state.name, frameNo, fps, crf);
+    } catch (err){
+      console.error(err);
+      log("Error: " + (err?.message || err));
+      $("#startBtn").disabled = false;
+    }
+  }
+
+  async function encode(ff, name, frameCount, fps, crf){
+    log("Codificando a MP4…"); progress(55);
+    const pattern = "frame_%05d.png";
+    const out = "export.mp4";
+    try {
+      await ff.run('-framerate', String(fps), '-i', pattern, '-c:v', 'libx264', '-preset', 'fast', '-crf', String(crf), '-pix_fmt','yuv420p','-movflags','+faststart', out);
+    } catch (e){
+      log("x264 no disponible, usando MPEG‑4…");
+      await ff.run('-framerate', String(fps), '-i', pattern, '-c:v', 'mpeg4', '-qscale:v', '2', '-movflags','+faststart', out);
+    }
+    progress(95);
+    const data = ff.FS('readFile', out);
+    const blob = new Blob([data.buffer], { type:'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${name || 'lavagna'}_${fps}fps.mp4`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    progress(100); log("Listo ✔ — ya podés cerrar esta pestaña.");
+    $("#startBtn").disabled = false;
+  }
+})();</script>
+</body>
+</html>
