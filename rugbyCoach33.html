@@ -160,21 +160,21 @@
 
       <div class="group">
         <strong>Giocate</strong>
-        <input type="text" id="playName" placeholder="Nome giocada" />
+        <input type="text" id="playName" placeholder="Nome giocata" />
         <div class="row" style="grid-template-columns: 1fr 1fr;">
           <button class="btn" id="savePlay">Salva</button>
           <button class="btn alt" id="duplicatePlay">Duplica</button>
         </div>
         <select id="loadPlay"></select>
-        <button class="btn" id="deletePlay">Elimina giocada</button>
+        <button class="btn" id="deletePlay">Elimina giocata</button>
       </div>
 
       <div class="group">
         <strong>Animazione</strong>
         <div class="row" style="grid-template-columns: 1fr 1fr; gap:8px;">
-          <button class="btn" id="recordStepBtn">Graba paso</button>
+          <button class="btn" id="recordStepBtn">Registra passo</button>
           <label class="chk" style="display:flex;align-items:center;gap:8px;border:none;background:transparent;padding:.4rem .6rem;box-shadow:none">
-            <input type="checkbox" id="autoRecord"> Auto al soltar
+            <input type="checkbox" id="autoRecord"> Auto al rilascio
           </label>
         </div>
 
@@ -194,26 +194,26 @@
             <input type="range" id="scrubber" min="0" max="0" value="0" />
           </label>
           <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;">
-            <button class="btn alt" id="prevFrameBtn">◀ Anterior</button>
+            <button class="btn alt" id="prevFrameBtn">◀ Precedente</button>
             <div style="text-align:center;">Frame: <span id="scrubberVal">0</span> / <span id="frameTotal">0</span></div>
-            <button class="btn alt" id="nextFrameBtn">Siguiente ▶</button>
+            <button class="btn alt" id="nextFrameBtn">Successivo ▶</button>
           </div>
         </div>
 
         <div class="row" style="grid-template-columns: 1fr 1fr; gap:8px;">
-          <button class="btn alt" id="clearTimelineBtn">Limpiar animación</button>
-          <button class="btn" id="exportTimelineBtn">Exportar JSON</button>
+          <button class="btn alt" id="clearTimelineBtn">Pulisci</button>
+          <button class="btn" id="exportTimelineBtn">Expor JSON</button>
         </div>
-        <button class="btn alt" id="importTimelineBtn">Importar JSON</button>
-        <div style="font-size:12px;opacity:.8;">Frames guardados: <span id="frameCount">0</span></div>
+        <button class="btn alt" id="importTimelineBtn">Import JSON</button>
+        <div style="font-size:12px;opacity:.8;">Frames salvati: <span id="frameCount">0</span></div>
       </div>
 
       <div class="group">
         <strong>Export</strong>
         <div class="row" style="grid-template-columns: 1fr;">
-          <button class="btn" id="exportJpgBtn">Exportar imagen (JPG)</button>
-          <button class="btn alt" id="exportVideoBtn">Exportar video (WebM)</button>
-          <button class="btn" id="exportMp4Btn">Exportar MP4 (beta)</button>
+          <button class="btn" id="exportJpgBtn">Export immagine (JPG)</button>
+          <button class="btn alt" id="exportVideoBtn">Export video (WebM)</button>
+          <button class="btn" id="exportMp4Btn">Export MP4 (beta)</button>
           <small class="note">El video incluye jugadores, pallone, flechas y líneas. MP4 usa ffmpeg.wasm (puede tardar la 1ª vez).</small>
           <div id="ffmpegStatus" class="note"></div>
         </div>
@@ -1649,3 +1649,4 @@ UIManager.setupEventListeners();
   </script>
 </body>
 </html>
+
