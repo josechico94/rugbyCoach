@@ -1,0 +1,2219 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Lavagna di Rugby — Animazione + Export JPG/WebM/MP4 + Campo Vertical</title>
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.min.js"></script>
+  <style>
+    :root {
+      --sidebar-w: 360px;
+      --player-size: 40px;
+      --player-font: 14px;
+      --blue: #0d6efd;
+      --red: #e63946;
+      --ink: #e6edf3;
+      --panel: #0f1720;
+      --panel-2: #111923;
+      --border: #1f2a36;
+      --shadow: 0 4px 16px rgba(0,0,0,.25);
+      --grid: rgba(255,255,255,.08);
+      --yellow: #ffd400;
+      --accent: #00c2ff;
+      --accent2: #7ef29a;
+      --warn: #ffd400;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: #0b1720; color: var(--ink); font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Arial,"Noto Sans",sans-serif; }
+    .app { height: 100dvh; display: grid; grid-template-columns: var(--sidebar-w) 1fr; }
+
+    .sidebar { background: var(--panel-2); border-right: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow: auto; z-index: 1000; -webkit-overflow-scrolling: touch; }
+    .sidebar h1 { font-size: 18px; margin: 0 0 8px 0; }
+    .group { border: 1px solid var(--border); background: var(--panel); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
+    .group strong { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; opacity: .9; }
+    .row { display: grid; gap: 8px; }
+
+    .btn, select, input[type="text"], input[type="number"], input[type="range"], label.chk {
+      appearance: none; border: 1px solid #263443; background: #15202b; color: var(--ink);
+      padding: .55rem .7rem; border-radius: 10px; box-shadow: var(--shadow); font-size: 14px;
+    }
+    .btn { cursor: pointer; text-align: center; }
+    .btn:hover { filter: brightness(1.08); }
+    .btn.alt { background: #0e2235; }
+    .btn.primary { background: var(--accent); color: #000; font-weight: 600; }
+    .btn.danger { background: var(--red); color: #fff; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn.active { background: var(--blue); border-color: var(--blue); }
+
+    small.note { opacity:.8 }
+    .legend { display:flex; align-items:center; gap:8px; font-size: 13px; }
+    .swatch { width: .9em; height: .9em; border-radius: 50%; display:inline-block; }
+
+    .stage { position: relative; display: grid; place-items: center; padding: 16px; overflow: hidden; }
+    .board-viewport { position: relative; width:100%; height:100%; contain: layout paint; }
+    .board-wrap { position: absolute; width: 1200px; height: 700px; transform-origin: top left; }
+    .board { position: absolute; inset: 0; background: #137a46; overflow: hidden; border-radius: 18px; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+
+    .board::before {
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background-image: linear-gradient(90deg, rgba(255,255,255,.02) 0 5%, transparent 5% 10%, rgba(255,255,255,.02) 10% 15%, transparent 15% 20%, rgba(255,255,255,.02) 20% 25%, transparent 25% 30%, rgba(255,255,255,.02) 30% 35%, transparent 35% 40%, rgba(255,255,255,.02) 40% 45%, transparent 45% 50%, rgba(255,255,255,.02) 50% 55%, transparent 55% 60%, rgba(255,255,255,.02) 60% 65%, transparent 65% 70%, rgba(255,255,255,.02) 70% 75%, transparent 75% 80%, rgba(255,255,255,.02) 80% 85%, transparent 85% 90%, rgba(255,255,255,.02) 90% 95%, transparent 95% 100%);
+    }
+    .grid-overlay { position:absolute; inset:0; pointer-events:none; opacity:.6; display:none; }
+    .grid-overlay.active { display:block; }
+
+    .lines, #draw { position:absolute; inset:0; pointer-events:none; }
+    svg { width:100%; height:100%; display:block; }
+
+    body, #boardViewport, #boardWrap, #board, #players, #ball, #draw { touch-action:none; }
+
+    #players { position:absolute; inset:0; z-index:3; pointer-events:none; }
+    .player { pointer-events:auto; position:absolute; width:40px; height:40px; border-radius:50%; display:grid; place-items:center; font-weight:700; font-size:14px; color:#fff; cursor:grab; border:2px solid #fff; box-shadow: var(--shadow); }
+    .player.selected { border: 3px solid var(--accent); box-shadow: 0 0 10px var(--accent); }
+    .player:active, #ball:active { cursor: grabbing !important; }
+    
+    #ball { position:absolute; z-index:4; }
+    .blue { background: var(--blue); } .red { background: var(--red); }
+
+    .ball { width:50px; height:30px; background: var(--yellow); border: 2px solid #fff; border-radius: 50% / 60%; transform: translate(-50%,-50%) rotate(-15deg); box-shadow: 0 3px 12px rgba(0,0,0,.35); cursor: grab; }
+    .ball::after { content:""; position:absolute; inset:6px 18px; border-radius:50% / 60%; border:2px dashed rgba(0,0,0,.25); }
+    .label { font-size:12px; font-weight:700; fill:#fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+
+    .hamburger { 
+      position: fixed; 
+      top: calc(12px + env(safe-area-inset-top)); 
+      left: calc(12px + env(safe-area-inset-left)); 
+      width: 44px; 
+      height: 44px; 
+      display: none; 
+      place-items: center; 
+      font-size: 22px; 
+      border: 1px solid #263443; 
+      background: #15202b; 
+      color: var(--ink); 
+      border-radius: 10px; 
+      box-shadow: var(--shadow); 
+      z-index: 1100; 
+      cursor: pointer;
+    }
+    .close-drawer { 
+      display: none; 
+      position: sticky; 
+      top: 0; 
+      margin-left: auto; 
+      width: 36px; 
+      height: 36px; 
+      border: 1px solid #263443; 
+      background: #15202b; 
+      color: var(--ink); 
+      border-radius: 10px; 
+      box-shadow: var(--shadow); 
+      z-index: 1001; 
+      cursor: pointer;
+      place-items: center;
+    }
+    .scrim { 
+      position: fixed; 
+      inset: 0; 
+      background: rgba(0,0,0,.45); 
+      opacity: 0; 
+      pointer-events: none; 
+      transition: opacity .2s ease; 
+      z-index: 900; 
+    }
+    .scrim.show { 
+      opacity: 1; 
+      pointer-events: auto; 
+    }
+
+    .login-overlay { 
+      position: fixed; 
+      inset: 0; 
+      background: #0b1720; 
+      display: flex; 
+      flex-direction: column; 
+      justify-content: center; 
+      align-items: center; 
+      z-index: 3000; 
+      padding: 20px;
+    }
+    .login-container {
+      background: var(--panel);
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .login-header h1 {
+      color: var(--accent);
+      margin: 0 0 0.5rem 0;
+      font-size: 1.5rem;
+    }
+    .login-header p {
+      color: var(--ink);
+      opacity: 0.8;
+      margin: 0;
+    }
+    .login-input {
+      width: 100%;
+      padding: 12px;
+      background: #0c1c2b;
+      color: var(--ink);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .login-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .login-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .login-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .login-message {
+      text-align: center;
+      font-size: 0.85rem;
+      margin: 0;
+      min-height: 20px;
+    }
+    .login-error {
+      color: var(--red);
+    }
+    .login-success {
+      color: var(--accent2);
+    }
+
+    .status-indicator { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 8px 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    .status-dot.offline { background: var(--warn); }
+    .status-dot.error { background: var(--red); }
+
+    @media (max-width: 900px) {
+      :root { --sidebar-w: min(86vw, 420px); }
+      html, body { overflow: hidden; height: 100dvh; }
+      .app { grid-template-columns: 1fr; height: 100dvh; }
+      .sidebar { 
+        position: fixed; 
+        top: 0; 
+        left: 0; 
+        bottom: 0; 
+        width: var(--sidebar-w); 
+        transform: translateX(-105%); 
+        transition: transform .25s ease; 
+        padding-top: calc(12px + env(safe-area-inset-top)); 
+        z-index: 1000;
+      }
+      .sidebar.open { transform: translateX(0); }
+      .close-drawer { display: grid; }
+      .hamburger { display: grid; }
+      .stage { padding: 0; }
+      .board-viewport { 
+        position: fixed; 
+        top: 0; 
+        left: 0; 
+        right: 0; 
+        bottom: 0; 
+        overflow: hidden; 
+        background: #0b1720;
+      }
+    }
+
+    /* Mejoras para el menú hamburguesa en móvil */
+    @media (max-width: 900px) {
+      .hamburger {
+        display: grid !important;
+      }
+      
+      .main-app-visible .hamburger {
+        display: grid !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Overlay de Login -->
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-container">
+      <div class="login-header">
+        <h1>RugbyBoard Pro</h1>
+        <p>Accedi per utilizzare la lavagna</p>
+      </div>
+      <input type="email" id="loginEmail" class="login-input" placeholder="Email" />
+      <input type="password" id="loginPassword" class="login-input" placeholder="Password" />
+      <button class="login-btn" id="btnLogin">Accedi</button>
+      <p id="loginMessage" class="login-message"></p>
+    </div>
+  </div>
+
+  <!-- Botón hamburguesa - Siempre visible en móvil cuando la app está visible -->
+  <button id="menuBtn" class="hamburger" aria-label="Apri pannello">☰</button>
+  <div id="scrim" class="scrim" aria-hidden="true"></div>
+
+  <div class="app" style="display: none;" id="mainApp">
+    <aside class="sidebar" id="sidebar">
+      <button id="closeMenu" class="close-drawer" aria-label="Chiudi">✕</button>
+      
+      <!-- Header con estado de autenticación -->
+      <div class="group">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h1>RugbyBoard Pro</h1>
+          <div class="status-indicator" id="authStatus">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">Conectando...</span>
+          </div>
+        </div>
+        <button class="btn primary" id="btnAuthAction">Esci</button>
+      </div>
+
+      <div class="group">
+        <strong>Controlli</strong>
+        <div class="row" style="grid-template-columns: 1fr;">
+          <button class="btn" id="toggleLabels">Mostra etichette</button>
+          <button class="btn alt" id="reset">Reimposta posizioni</button>
+        </div>
+        <label class="chk" style="display:flex;align-items:center;gap:8px;border:none;background:transparent;padding:0;box-shadow:none">
+          <input type="checkbox" id="snapToggle"> Aggancia alla griglia
+        </label>
+        <label class="chk" style="display:flex;align-items:center;gap:8px;border:none;background:transparent;padding:0;box-shadow:none">
+          <input type="checkbox" id="verticalField"> Campo vertical
+        </label>
+        <div class="legend"><span class="swatch" style="background:#0d6efd"></span> Blu (1–15)</div>
+        <div class="legend"><span class="swatch" style="background:#e63946"></span> Rossi (1–15)</div>
+      </div>
+
+      <div class="group">
+        <strong>Disegno</strong>
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
+          <button class="btn active" id="toolArrows">Frecce: Attivo</button>
+          <button class="btn alt" id="toolPen">Matita: Inattiva</button>
+        </div>
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
+          <label>Colore
+            <select id="strokeColor">
+              <option value="#ffffff">Bianco</option>
+              <option value="#35d07f">Verde</option>
+              <option value="#0d6efd">Blu</option>
+              <option value="#e63946">Rosso</option>
+              <option value="#f4d35e" selected>Giallo</option>
+            </select>
+          </label>
+          <label>Spessore
+            <select id="strokeWidth">
+              <option value="3">Sottile</option>
+              <option value="5" selected>Medio</option>
+              <option value="7">Grosso</option>
+            </select>
+          </label>
+        </div>
+        <label class="chk" style="border:none;background:transparent;padding:0;box-shadow:none">
+          <input type="checkbox" id="dashedToggle"> Linea tratteggiada
+        </label>
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
+          <button class="btn" id="undoGeneric">Annulla</button>
+          <button class="btn" id="clearArrows">Cancella frecce</button>
+        </div>
+        <button class="btn" id="clearAll">Cancella tutto</button>
+      </div>
+
+      <div class="group">
+        <strong>Giocate</strong>
+        <input type="text" id="playName" placeholder="Nome giocata" />
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
+          <button class="btn" id="savePlay">Salva</button>
+          <button class="btn alt" id="duplicatePlay">Duplica</button>
+        </div>
+        <select id="loadPlay"></select>
+        <div class="row" style="grid-template-columns: 1fr 1fr;">
+          <button class="btn danger" id="deletePlay">Elimina</button>
+          <button class="btn" id="btnLoadPlay">Carica</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <strong>Animazione</strong>
+        <div class="row" style="grid-template-columns: 1fr 1fr; gap:8px;">
+          <button class="btn" id="recordStepBtn">Registra passo</button>
+          <label class="chk" style="display:flex;align-items:center;gap:8px;border:none;background:transparent;padding:.4rem .6rem;box-shadow:none">
+            <input type="checkbox" id="autoRecord"> Auto al rilascio
+          </label>
+        </div>
+
+        <div class="row" style="grid-template-columns: 1fr 1fr 1fr; gap:8px;">
+          <button class="btn primary" id="playBtn">Play</button>
+          <button class="btn alt" id="pauseBtn">Pause</button>
+          <button class="btn" id="stopBtn">Stop</button>
+        </div>
+
+        <div class="row" style="grid-template-columns: auto 1fr; align-items:center;">
+          Velocidad (ms por paso)
+          <input type="number" id="speedInput" min="100" step="100" value="800" />
+        </div>
+
+        <div class="row" style="grid-template-columns: 1fr; gap:8px;">
+          <label>Scrubber (0 → N)
+            <input type="range" id="scrubber" min="0" max="0" value="0" />
+          </label>
+          <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;">
+            <button class="btn alt" id="prevFrameBtn">◀ Precedente</button>
+            <div style="text-align:center;">Frame: <span id="scrubberVal">0</span> / <span id="frameTotal">0</span></div>
+            <button class="btn alt" id="nextFrameBtn">Successivo ▶</button>
+          </div>
+        </div>
+
+        <div class="row" style="grid-template-columns: 1fr 1fr; gap:8px;">
+          <button class="btn alt" id="clearTimelineBtn">Pulisci</button>
+          <button class="btn" id="exportTimelineBtn">Expor JSON</button>
+        </div>
+        <button class="btn alt" id="importTimelineBtn">Import JSON</button>
+        <div style="font-size:12px;opacity:.8;">Frames salvati: <span id="frameCount">0</span></div>
+      </div>
+
+      <div class="group">
+        <strong>Export</strong>
+        <div class="row" style="grid-template-columns: 1fr;">
+          <button class="btn" id="exportJpgBtn">Export immagine (JPG)</button>
+          <button class="btn alt" id="exportVideoBtn">Export video (WebM)</button>
+          <button class="btn" id="exportMp4Btn">Export MP4 (beta)</button>
+          <small class="note">El video incluye jugadores, pallone, flechas y líneas. MP4 usa ffmpeg.wasm (puede tardar la 1ª vez).</small>
+          <div id="ffmpegStatus" class="note"></div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="board-viewport" id="boardViewport">
+        <div class="board-wrap" id="boardWrap">
+          <div id="board" class="board">
+            <svg class="grid-overlay" id="grid" viewBox="0 0 1200 700" preserveAspectRatio="none"></svg>
+
+            <svg class="lines" viewBox="0 0 1200 700" preserveAspectRatio="none" aria-hidden="true">
+              <rect x="5" y="5" width="1190" height="690" fill="none" stroke="#fff" stroke-width="6" />
+              <rect x="0" y="0" width="80" height="700" fill="rgba(255,255,255,.07)" />
+              <rect x="1120" y="0" width="80" height="700" fill="rgba(255,255,255,.07)" />
+              <line x1="80" y1="0" x2="80" y2="700" stroke="#fff" stroke-width="4" />
+              <line x1="1120" y1="0" x2="1120" y2="700" stroke="#fff" stroke-width="4" />
+              <line x1="309" y1="0" x2="309" y2="700" stroke="#fff" stroke-width="3" />
+              <line x1="891" y1="0" x2="891" y2="700" stroke="#fff" stroke-width="3" />
+              <line x1="500" y1="0" x2="500" y2="700" stroke="#fff" stroke-width="2" stroke-dasharray="8 10" />
+              <line x1="697" y1="0" x2="697" y2="700" stroke="#fff" stroke-width="2" stroke-dasharray="8 10" />
+              <line x1="600" y1="0" x2="600" y2="700" stroke="#fff" stroke-width="4" />
+              <line x1="5" y1="50" x2="1195" y2="50" stroke="#fff" stroke-width="2" stroke-dasharray="4 8" />
+              <line x1="5" y1="150" x2="1195" y2="150" stroke="#fff" stroke-width="2" stroke-dasharray="4 8" />
+              <line x1="5" y1="550" x2="1195" y2="550" stroke="#fff" stroke-width="2" stroke-dasharray="4 8" />
+              <line x1="5" y1="650" x2="1195" y2="650" stroke="#fff" stroke-width="2" stroke-dasharray="4 8" />
+              <line x1="130" y1="0" x2="130" y2="700" stroke="#fff" stroke-width="2" stroke-dasharray="8 10"/>
+              <line x1="1070" y1="0" x2="1070" y2="700" stroke="#fff" stroke-width="2" stroke-dasharray="8 10"/>
+            </svg>
+
+            <svg id="draw" viewBox="0 0 1200 700" preserveAspectRatio="none"></svg>
+            <div id="players"></div>
+            <div id="ball" class="ball" title="Pallone"></div>
+            <div id="selectionBox" style="position:absolute; pointer-events:none; border:1px dashed var(--accent); background:rgba(0,194,255,0.1); z-index:5; display:none;"></div>
+          </div>
+        </div>
+      </div>
+      <canvas id="exportCanvas" width="1200" height="700" style="position:fixed; top:-9999px; left:-9999px;"></canvas>
+    </main>
+  </div>
+
+  <script type="module">
+    // --- IMPORTS FIREBASE ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, deleteDoc, collection, query, onSnapshot, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // --- CONFIGURACIÓN FIREBASE ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyDCIY11FyQxKZY3hwBGNWixtaK_SFZko6k",
+      authDomain: "rugbycoach-f0b23.firebaseapp.com",
+      projectId: "rugbycoach-f0b23",
+      storageBucket: "rugbycoach-f0b23.firebasestorage.app",
+      messagingSenderId: "536069158649",
+      appId: "1:536069158649:web:ead82ceea04f5d7ab39428",
+    };
+
+    const AUTHORIZED_USERS_IDS = ['YZyCoUgkMsOtP7gmWe1qdlWmaug1', '9VvUXzzbtjXsQtt6cswccxfXHTr2'];
+    
+    // Variables globales Firebase
+    let app, db = null, auth;
+    let isAuthorized = false;
+    let currentUser = null;
+
+    // --- CONSTANTES GLOBALES ---
+    const WIDTH = 1200, HEIGHT = 700;
+    const GRID_SIZE = 24;
+    const TL_KEY = 'rugby-timeline-v2';
+    const POS_KEY = 'rugby-positions-v3';
+    const ARROW_KEY = 'rugby-arrows-v3';
+    const STROKE_KEY = 'rugby-strokes-v1';
+    const BALL_KEY = 'rugby-ball-v1';
+    const PLAY_PREFIX = 'play-v3-';
+
+    // --- ESTADO CENTRALIZADO (appState) ---
+    let appState = {
+        layout: { mode: 'landscape', scale: 1, tx: 0, ty: 0, forceVertical: false },
+        tool: 'arrows',
+        arrows: [],
+        strokes: [],
+        drawingArrow: false,
+        drawingStroke: false,
+        startPoint: null,
+        currentStroke: null,
+        timeline: [],
+        playing: false,
+        paused: false,
+        playIndex: 0,
+        rafId: null,
+        segmentStartTime: 0,
+        segmentDuration: 800,
+        fromFrame: null,
+        toFrame: null,
+        selectedPlayers: new Set(),
+    };
+
+    // --- REFERENCIAS DEL DOM ---
+    const dom = {
+        loginOverlay: document.getElementById('loginOverlay'),
+        mainApp: document.getElementById('mainApp'),
+        boardViewport: document.getElementById('boardViewport'),
+        boardWrap: document.getElementById('boardWrap'),
+        board: document.getElementById('board'),
+        playersLayer: document.getElementById('players'),
+        draw: document.getElementById('draw'),
+        gridSvg: document.getElementById('grid'),
+        ball: document.getElementById('ball'),
+        exportCanvas: document.getElementById('exportCanvas'),
+        ctx: document.getElementById('exportCanvas').getContext('2d'),
+        selectionBox: document.getElementById('selectionBox'),
+        sidebar: document.getElementById('sidebar'),
+        menuBtn: document.getElementById('menuBtn'),
+        closeMenuBtn: document.getElementById('closeMenu'),
+        scrim: document.getElementById('scrim'),
+        loginEmail: document.getElementById('loginEmail'),
+        loginPassword: document.getElementById('loginPassword'),
+        btnLogin: document.getElementById('btnLogin'),
+        loginMessage: document.getElementById('loginMessage'),
+        btnAuthAction: document.getElementById('btnAuthAction'),
+        authStatus: document.getElementById('authStatus'),
+        statusDot: document.getElementById('statusDot'),
+        statusText: document.getElementById('statusText'),
+        toggleLabelsBtn: document.getElementById('toggleLabels'),
+        resetBtn: document.getElementById('reset'),
+        snapToggle: document.getElementById('snapToggle'),
+        verticalFieldChk: document.getElementById('verticalField'),
+        toolArrowsBtn: document.getElementById('toolArrows'),
+        toolPenBtn: document.getElementById('toolPen'),
+        undoGenericBtn: document.getElementById('undoGeneric'),
+        clearArrowsBtn: document.getElementById('clearArrows'),
+        clearAllBtn: document.getElementById('clearAll'),
+        strokeColorSel: document.getElementById('strokeColor'),
+        strokeWidthSel: document.getElementById('strokeWidth'),
+        dashedToggle: document.getElementById('dashedToggle'),
+        recordStepBtn: document.getElementById('recordStepBtn'),
+        autoRecordChk: document.getElementById('autoRecord'),
+        playBtn: document.getElementById('playBtn'),
+        pauseBtn: document.getElementById('pauseBtn'),
+        stopBtn: document.getElementById('stopBtn'),
+        speedInput: document.getElementById('speedInput'),
+        clearTimelineBtn: document.getElementById('clearTimelineBtn'),
+        exportTimelineBtn: document.getElementById('exportTimelineBtn'),
+        importTimelineBtn: document.getElementById('importTimelineBtn'),
+        frameCountEl: document.getElementById('frameCount'),
+        scrubber: document.getElementById('scrubber'),
+        scrubberVal: document.getElementById('scrubberVal'),
+        frameTotal: document.getElementById('frameTotal'),
+        prevFrameBtn: document.getElementById('prevFrameBtn'),
+        nextFrameBtn: document.getElementById('nextFrameBtn'),
+        playNameInput: document.getElementById('playName'),
+        loadPlaySel: document.getElementById('loadPlay'),
+        savePlayBtn: document.getElementById('savePlay'),
+        duplicatePlayBtn: document.getElementById('duplicatePlay'),
+        deletePlayBtn: document.getElementById('deletePlay'),
+        btnLoadPlay: document.getElementById('btnLoadPlay'),
+        exportJpgBtn: document.getElementById('exportJpgBtn'),
+        exportVideoBtn: document.getElementById('exportVideoBtn'),
+        exportMp4Btn: document.getElementById('exportMp4Btn'),
+        ffmpegStatus: document.getElementById('ffmpegStatus'),
+    };
+
+    // --- SISTEMA DE AUTENTICACIÓN MEJORADO ---
+    const AuthManager = {
+        async init() {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                onAuthStateChanged(auth, (user) => {
+                    currentUser = user;
+                    if (user) {
+                        isAuthorized = AUTHORIZED_USERS_IDS.includes(user.uid);
+                        if (isAuthorized) {
+                            AuthManager.showApp();
+                            AuthManager.updateUI(true);
+                            AuthManager.showStatus(`¡Bienvenido ${user.email}! Modo Entrenador`, 'success');
+                            InteractionManager.enableSelectionBox();
+                            InteractionManager.reinitializePlayerInteractions();
+                            // Habilitar arrastre de pelota después de login
+                            UnitsManager.enableDragBall(() => { 
+                                StorageManager.saveBall(); 
+                                if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); 
+                            });
+                        } else {
+                            AuthManager.showLogin();
+                            AuthManager.showStatus('Usuario no autorizado', 'error');
+                            setTimeout(() => {
+                                AuthManager.logout();
+                            }, 3000);
+                        }
+                    } else {
+                        isAuthorized = false;
+                        AuthManager.showLogin();
+                        AuthManager.updateUI(false);
+                    }
+                    StorageManager.updatePlaySelect();
+                });
+                
+            } catch (error) {
+                console.error("Firebase falló:", error);
+                AuthManager.showLogin();
+                AuthManager.showStatus('Error de conexión. Intenta más tarde.', 'error');
+            }
+        },
+
+        showLogin() {
+            dom.loginOverlay.style.display = 'flex';
+            dom.mainApp.style.display = 'none';
+            // Ocultar hamburguesa en login
+            dom.menuBtn.style.display = 'none';
+        },
+
+        showApp() {
+            dom.loginOverlay.style.display = 'none';
+            dom.mainApp.style.display = 'grid';
+            // Mostrar hamburguesa solo en móvil cuando la app está visible
+            if (window.innerWidth <= 900) {
+                dom.menuBtn.style.display = 'grid';
+            }
+            document.body.classList.add('main-app-visible');
+        },
+
+        updateUI(isLoggedIn) {
+            if (isLoggedIn && currentUser) {
+                dom.btnAuthAction.style.display = 'block';
+                dom.btnAuthAction.textContent = 'Esci';
+                dom.statusDot.className = 'status-dot';
+                dom.statusText.textContent = 'Entrenador';
+                AuthManager.setControlsEnabled(true);
+            } else {
+                dom.btnAuthAction.style.display = 'none';
+                dom.statusDot.className = 'status-dot error';
+                dom.statusText.textContent = 'No autenticado';
+                AuthManager.setControlsEnabled(false);
+            }
+        },
+
+        setControlsEnabled(enabled) {
+            const controls = [
+                dom.resetBtn, dom.toolArrowsBtn, dom.toolPenBtn, dom.undoGenericBtn,
+                dom.clearArrowsBtn, dom.clearAllBtn, dom.recordStepBtn, dom.savePlayBtn,
+                dom.duplicatePlayBtn, dom.deletePlayBtn, dom.btnLoadPlay
+            ];
+            
+            controls.forEach(control => {
+                if (control) control.disabled = !enabled;
+            });
+            
+            if (dom.strokeColorSel) dom.strokeColorSel.disabled = !enabled;
+            if (dom.strokeWidthSel) dom.strokeWidthSel.disabled = !enabled;
+            if (dom.dashedToggle) dom.dashedToggle.disabled = !enabled;
+        },
+
+        async login() {
+            const email = dom.loginEmail.value;
+            const password = dom.loginPassword.value;
+            
+            if (!email || !password) {
+                AuthManager.showMessage("Ingresa email y contraseña.", 'error');
+                return;
+            }
+            
+            dom.btnLogin.disabled = true;
+            AuthManager.showMessage("Iniciando sesión...", 'info');
+            
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                AuthManager.showMessage("", 'success');
+            } catch (error) {
+                let message = "Credenciales incorrectas.";
+                if (error.code === 'auth/invalid-email') message = "Formato de email inválido.";
+                if (error.code === 'auth/user-not-found') message = "Usuario no encontrado.";
+                if (error.code === 'auth/wrong-password') message = "Contraseña incorrecta.";
+                if (error.code === 'auth/too-many-requests') message = "Demasiados intentos. Intenta más tarde.";
+                
+                AuthManager.showMessage(`Error: ${message}`, 'error');
+            } finally {
+                dom.btnLogin.disabled = false;
+            }
+        },
+
+        async logout() {
+            try {
+                await signOut(auth);
+                AuthManager.showMessage('Sesión cerrada', 'info');
+                AuthManager.showLogin();
+            } catch (error) {
+                console.error("Error al cerrar sesión:", error);
+                AuthManager.showMessage('Error al cerrar sesión', 'error');
+            }
+        },
+
+        showMessage(message, type = 'info') {
+            dom.loginMessage.textContent = message;
+            dom.loginMessage.className = 'login-message';
+            if (type === 'error') dom.loginMessage.classList.add('login-error');
+            if (type === 'success') dom.loginMessage.classList.add('login-success');
+        },
+
+        showStatus(message, type = 'info') {
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+    };
+
+    // --- UTILIDADES ---
+    function dist(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return Math.hypot(dx, dy); }
+    function centerOf(el) { return { x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0 }; }
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function ballOverPlayer(playerEl, threshold = 28) {
+        const b = centerOf(dom.ball);
+        const p = centerOf(playerEl);
+        return dist(b.x, b.y, p.x, p.y) < threshold;
+    }
+    function snap(val) { return Math.round(val / GRID_SIZE) * GRID_SIZE; }
+    function rectIntersect(a, b) {
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    }
+
+    // --- GESTIÓN DE LAYOUT Y COORDENADAS ---
+    const LayoutManager = {
+        isPortraitLike() {
+            if (appState.layout.forceVertical) return true;
+            const mq = window.matchMedia('(orientation: portrait)');
+            return (mq && mq.matches) || (window.innerHeight > window.innerWidth);
+        },
+        applyUprightTransforms() {
+            const rotatePlayers = (appState.layout.mode === 'portrait');
+            [...dom.playersLayer.children].forEach(el => {
+                el.style.transform = rotatePlayers
+                    ? 'translate(-50%, -50%) rotate(-90deg)'
+                    : 'translate(-50%, -50%)';
+            });
+        },
+        fitBoard() {
+            const vp = dom.boardViewport.getBoundingClientRect();
+            const availW = vp.width;
+            const availH = vp.height;
+
+            if (!LayoutManager.isPortraitLike()) {
+                appState.layout.mode = 'landscape';
+                appState.layout.scale = Math.min(availW / WIDTH, availH / HEIGHT);
+                
+                const scaledW = WIDTH * appState.layout.scale;
+                const scaledH = HEIGHT * appState.layout.scale;
+                appState.layout.tx = (availW - scaledW) / 2;
+                appState.layout.ty = (availH - scaledH) / 2;
+                
+                dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(0deg) scale(${appState.layout.scale})`;
+                dom.boardWrap.style.transformOrigin = 'top left';
+
+            } else {
+                appState.layout.mode = 'portrait';
+                const rotW = HEIGHT;
+                const rotH = WIDTH;
+
+                appState.layout.scale = Math.min(availW / rotW, availH / rotH);
+                
+                const contentW = rotW * appState.layout.scale;
+                const contentH = rotH * appState.layout.scale;
+                
+                const txCenter = (availW - contentW) / 2;
+                const tyCenter = (availH - contentH) / 2;
+                
+                appState.layout.tx = txCenter + contentW;
+                appState.layout.ty = tyCenter;
+
+                dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(90deg) scale(${appState.layout.scale})`;
+                dom.boardWrap.style.transformOrigin = 'top left';
+            }
+            
+            LayoutManager.applyUprightTransforms();
+        },
+        clientToBoard(e) {
+            const vp = dom.boardViewport.getBoundingClientRect();
+            const cx = e.clientX - vp.left;
+            const cy = e.clientY - vp.top;
+            if (appState.layout.mode === 'portrait') {
+                const x_raw = (cx - appState.layout.tx);
+                const y_raw = (cy - appState.layout.ty);
+
+                const px = y_raw / appState.layout.scale;
+                const py = -x_raw / appState.layout.scale;
+                
+                const x = px;
+                const y = py;
+                
+                return { x: clamp(x, 0, WIDTH), y: clamp(y, 0, HEIGHT) };
+            } else {
+                const x = (e.clientX - vp.left - appState.layout.tx) / appState.layout.scale;
+                const y = (e.clientY - vp.top - appState.layout.ty) / appState.layout.scale;
+                return { x: clamp(x, 0, WIDTH), y: clamp(y, 0, HEIGHT) };
+            }
+        },
+        deltaToBoard(dxClient, dyClient) {
+            if (appState.layout.mode === 'portrait') {
+                const dx = dyClient / appState.layout.scale;
+                const dy = -dxClient / appState.layout.scale;
+                return { dx, dy };
+            } else {
+                const rect = dom.board.getBoundingClientRect();
+                const scale = rect.width / WIDTH;
+                return { dx: dxClient / scale, dy: dyClient / scale };
+            }
+        },
+        renderGrid() {
+            const s = GRID_SIZE;
+            dom.gridSvg.innerHTML = '';
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            for (let x = s; x < WIDTH; x += s) {
+                const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                l.setAttribute('x1', x); l.setAttribute('y1', 0); l.setAttribute('x2', x); l.setAttribute('y2', HEIGHT);
+                l.setAttribute('stroke', 'var(--grid)'); l.setAttribute('stroke-width', '1'); g.appendChild(l);
+            }
+            for (let y = s; y < HEIGHT; y += s) {
+                const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                l.setAttribute('x1', 0); l.setAttribute('y1', y); l.setAttribute('x2', WIDTH); l.setAttribute('y2', y);
+                l.setAttribute('stroke', 'var(--grid)'); l.setAttribute('stroke-width', '1'); g.appendChild(l);
+            }
+            dom.gridSvg.appendChild(g);
+            dom.gridSvg.classList.toggle('active', dom.snapToggle.checked);
+        }
+    };
+
+    // --- GESTIÓN DE JUGADORES Y BALÓN ---
+    const UnitsManager = {
+        initialPositions: (function () {
+            const positions = [];
+            for (let i = 1; i <= 15; i++) positions.push({ team: 'blue', number: i, x: WIDTH * 0.18, y: HEIGHT * (0.1 + (i - 1) * (0.8 / 14)) });
+            for (let i = 1; i <= 15; i++) positions.push({ team: 'red', number: i, x: WIDTH * 0.82, y: HEIGHT * (0.1 + (i - 1) * (0.8 / 14)) });
+            return positions;
+        })(),
+        createPlayers() {
+            dom.playersLayer.innerHTML = '';
+            UnitsManager.initialPositions.forEach(p => {
+                const el = document.createElement('div');
+                el.className = `player ${p.team}`;
+                el.textContent = p.number;
+                el.style.left = (p.x) + 'px';
+                el.style.top = (p.y) + 'px';
+                el.dataset.number = p.number;
+                el.dataset.team = p.team;
+                UnitsManager.enableDragPlayer(el, () => { 
+                    StorageManager.savePositions(); 
+                    if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); 
+                });
+                dom.playersLayer.appendChild(el);
+            });
+            LayoutManager.applyUprightTransforms();
+        },
+        enableDragPlayer(playerEl, onDrop) {
+            if (!isAuthorized) return;
+            
+            let pointerId = null, startX = 0, startY = 0, origL = 0, origT = 0;
+            let lockBallToPlayer = false;
+            let offX = 0, offY = 0;
+            let isGroupMove = false;
+            let playerOffsets = [];
+
+            const onDown = e => {
+                pointerId = e.pointerId;
+                playerEl.setPointerCapture(pointerId);
+                e.preventDefault();
+                startX = e.clientX; startY = e.clientY;
+                origL = parseFloat(playerEl.style.left) || 0;
+                origT = parseFloat(playerEl.style.top) || 0;
+
+                if (!playerEl.classList.contains('selected')) {
+                    InteractionManager.clearSelection();
+                    playerEl.classList.add('selected');
+                    appState.selectedPlayers.add(playerEl);
+                }
+
+                isGroupMove = appState.selectedPlayers.size > 1;
+                if (isGroupMove) {
+                    playerOffsets = Array.from(appState.selectedPlayers).map(el => ({
+                        el,
+                        initialX: parseFloat(el.style.left),
+                        initialY: parseFloat(el.style.top)
+                    }));
+                }
+
+                lockBallToPlayer = ballOverPlayer(playerEl);
+                if (lockBallToPlayer) {
+                    const p0 = { x: origL, y: origT };
+                    const b0 = centerOf(dom.ball);
+                    offX = b0.x - p0.x;
+                    offY = b0.y - p0.y;
+                }
+
+                const onMove = ev => {
+                    if (ev.pointerId !== pointerId) return;
+                    ev.preventDefault();
+                    const { dx, dy } = LayoutManager.deltaToBoard(ev.clientX - startX, ev.clientY - startY);
+                    
+                    if (isGroupMove) {
+                        playerOffsets.forEach(pl => {
+                            pl.el.style.left = clamp(pl.initialX + dx, 0, WIDTH) + 'px';
+                            pl.el.style.top = clamp(pl.initialY + dy, 0, HEIGHT) + 'px';
+                        });
+                    } else {
+                        playerEl.style.left = clamp(origL + dx, 0, WIDTH) + 'px';
+                        playerEl.style.top = clamp(origT + dy, 0, HEIGHT) + 'px';
+                    }
+
+                    if (lockBallToPlayer) {
+                        const newPlayerPos = centerOf(playerEl);
+                        const bx = clamp(newPlayerPos.x + offX, 0, WIDTH);
+                        const by = clamp(newPlayerPos.y + offY, 0, HEIGHT);
+                        dom.ball.style.left = bx + 'px';
+                        dom.ball.style.top = by + 'px';
+                    }
+                };
+
+                const onUp = ev => {
+                    if (ev.pointerId !== pointerId) return;
+                    try { playerEl.releasePointerCapture(pointerId); } catch { }
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+
+                    if (dom.snapToggle.checked) {
+                        const finalizePosition = (el) => {
+                            const px = snap(parseFloat(el.style.left));
+                            const py = snap(parseFloat(el.style.top));
+                            el.style.left = px + 'px';
+                            el.style.top = py + 'px';
+                            return { x: px, y: py };
+                        };
+
+                        if (isGroupMove) {
+                            playerOffsets.forEach(pl => finalizePosition(pl.el));
+                            if (lockBallToPlayer) {
+                                const playerPos = centerOf(playerEl);
+                                const sbx = clamp(snap(playerPos.x + offX), 0, WIDTH);
+                                const sby = clamp(snap(playerPos.y + offY), 0, HEIGHT);
+                                dom.ball.style.left = sbx + 'px';
+                                dom.ball.style.top = sby + 'px';
+                            }
+                        } else {
+                            finalizePosition(playerEl);
+                            if (lockBallToPlayer) {
+                                const playerPos = centerOf(playerEl);
+                                const sbx = clamp(snap(playerPos.x + offX), 0, WIDTH);
+                                const sby = clamp(snap(playerPos.y + offY), 0, HEIGHT);
+                                dom.ball.style.left = sbx + 'px';
+                                dom.ball.style.top = sby + 'px';
+                            }
+                        }
+                    }
+                    (onDrop || (() => { }))(isGroupMove);
+                };
+
+                document.addEventListener('pointermove', onMove, { passive: false });
+                document.addEventListener('pointerup', onUp, { passive: false });
+            };
+
+            playerEl.addEventListener('pointerdown', onDown, { passive: false });
+            playerEl.ondragstart = () => false;
+        },
+        placeBall(x = WIDTH * 0.5, y = HEIGHT * 0.5) {
+            dom.ball.style.left = x + 'px';
+            dom.ball.style.top = y + 'px';
+            dom.ball.style.transform = 'translate(-50%, -50%) rotate(-15deg)';
+        },
+        enableDragBall(onDrop) {
+            if (!isAuthorized) return;
+            
+            let pointerId = null, startX = 0, startY = 0, origL = 0, origT = 0;
+            let passerEl = null;
+
+            const onDown = e => {
+                pointerId = e.pointerId;
+                dom.ball.setPointerCapture(pointerId);
+                e.preventDefault();
+                startX = e.clientX; startY = e.clientY;
+                origL = parseFloat(dom.ball.style.left) || 0;
+                origT = parseFloat(dom.ball.style.top) || 0;
+
+                InteractionManager.clearSelection();
+
+                const b0 = centerOf(dom.ball);
+                passerEl = (function () {
+                    let best = null, bestD = Infinity;
+                    for (const el of dom.playersLayer.children) {
+                        const p = centerOf(el);
+                        const d = dist(b0.x, b0.y, p.x, p.y);
+                        if (d < 28 && d < bestD) { best = el; bestD = d; }
+                    }
+                    return best;
+                })();
+
+                if (passerEl) {
+                    const p = centerOf(passerEl);
+                    UnitsManager.setPassPreview(p.x, p.y, b0.x, b0.y);
+                }
+
+                const onMove = ev => {
+                    if (ev.pointerId !== pointerId) return;
+                    ev.preventDefault();
+                    const { dx, dy } = LayoutManager.deltaToBoard(ev.clientX - startX, ev.clientY - startY);
+                    let nx = clamp(origL + dx, 0, WIDTH);
+                    let ny = clamp(origT + dy, 0, HEIGHT);
+                    dom.ball.style.left = nx + 'px';
+                    dom.ball.style.top = ny + 'px';
+
+                    if (passerEl) {
+                        const p = centerOf(passerEl);
+                        UnitsManager.setPassPreview(p.x, p.y, nx, ny);
+                    }
+                };
+
+                const onUp = ev => {
+                    if (ev.pointerId !== pointerId) return;
+                    try { dom.ball.releasePointerCapture(pointerId); } catch { }
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+                    UnitsManager.clearPassPreview();
+
+                    if (dom.snapToggle.checked) {
+                        dom.ball.style.left = snap(parseFloat(dom.ball.style.left)) + 'px';
+                        dom.ball.style.top = snap(parseFloat(dom.ball.style.top)) + 'px';
+                    }
+                    (onDrop || (() => { }))();
+                };
+
+                document.addEventListener('pointermove', onMove, { passive: false });
+                document.addEventListener('pointerup', onUp, { passive: false });
+            };
+
+            dom.ball.addEventListener('pointerdown', onDown, { passive: false });
+            dom.ball.ondragstart = () => false;
+        },
+        setPassPreview(x1, y1, x2, y2) {
+            let passEl = document.getElementById('passPreview');
+            if (!passEl) {
+                passEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                passEl.id = 'passPreview';
+                passEl.setAttribute('stroke', 'var(--yellow)');
+                passEl.setAttribute('stroke-width', '5');
+                passEl.setAttribute('stroke-dasharray', '12 8');
+                passEl.style.pointerEvents = 'none';
+                dom.draw.prepend(passEl);
+            }
+            passEl.setAttribute('x1', x1);
+            passEl.setAttribute('y1', y1);
+            passEl.setAttribute('x2', x2);
+            passEl.setAttribute('y2', y2);
+        },
+        clearPassPreview() {
+            const passEl = document.getElementById('passPreview');
+            if (passEl) passEl.remove();
+        }
+    };
+
+    // --- GESTIÓN DE INTERACCIONES ---
+    const InteractionManager = {
+        enableSelectionBox() {
+            if (!isAuthorized) return;
+            
+            let selectionPid = null;
+            let selectionStart = null;
+
+            dom.board.addEventListener('pointerdown', (e) => {
+                // PERMITIR SELECCIÓN INCLUSO CUANDO LAS HERRAMIENTAS DE DIBUJO ESTÁN ACTIVAS
+                if (e.target.closest('.player') || e.target.closest('#ball') || 
+                    appState.drawingArrow || appState.drawingStroke) return;
+
+                selectionPid = e.pointerId;
+                dom.board.setPointerCapture(selectionPid);
+                e.preventDefault();
+                selectionStart = LayoutManager.clientToBoard(e);
+                
+                dom.selectionBox.style.left = selectionStart.x + 'px';
+                dom.selectionBox.style.top = selectionStart.y + 'px';
+                dom.selectionBox.style.width = '0';
+                dom.selectionBox.style.height = '0';
+                dom.selectionBox.style.display = 'block';
+
+                const onMove = (ev) => {
+                    if (ev.pointerId !== selectionPid) return;
+                    ev.preventDefault();
+                    const current = LayoutManager.clientToBoard(ev);
+                    const left = Math.min(selectionStart.x, current.x);
+                    const top = Math.min(selectionStart.y, current.y);
+                    const right = Math.max(selectionStart.x, current.x);
+                    const bottom = Math.max(selectionStart.y, current.y);
+                    
+                    dom.selectionBox.style.left = left + 'px';
+                    dom.selectionBox.style.top = top + 'px';
+                    dom.selectionBox.style.width = (right - left) + 'px';
+                    dom.selectionBox.style.height = (bottom - top) + 'px';
+
+                    InteractionManager.selectPlayersInArea(left, top, right, bottom);
+                };
+
+                const onUp = (ev) => {
+                    if (ev.pointerId !== selectionPid) return;
+                    try { dom.board.releasePointerCapture(selectionPid); } catch {}
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+                    dom.selectionBox.style.display = 'none';
+                    selectionPid = null;
+                };
+
+                document.addEventListener('pointermove', onMove, { passive: false });
+                document.addEventListener('pointerup', onUp, { passive: false });
+            });
+        },
+
+        selectPlayersInArea(left, top, right, bottom) {
+            appState.selectedPlayers.forEach(player => player.classList.remove('selected'));
+            appState.selectedPlayers.clear();
+
+            [...dom.playersLayer.children].forEach(player => {
+                const playerX = parseFloat(player.style.left);
+                const playerY = parseFloat(player.style.top);
+                
+                if (playerX >= left && playerX <= right && playerY >= top && playerY <= bottom) {
+                    player.classList.add('selected');
+                    appState.selectedPlayers.add(player);
+                }
+            });
+        },
+
+        clearSelection() {
+            appState.selectedPlayers.forEach(player => player.classList.remove('selected'));
+            appState.selectedPlayers.clear();
+        },
+
+        reinitializePlayerInteractions() {
+            if (!isAuthorized) return;
+            
+            [...dom.playersLayer.children].forEach(player => {
+                const newPlayer = player.cloneNode(true);
+                player.parentNode.replaceChild(newPlayer, player);
+                
+                UnitsManager.enableDragPlayer(newPlayer, (isGroupMove) => {
+                    StorageManager.savePositions();
+                    if (dom.autoRecordChk.checked && !isGroupMove) TimelineManager.recordFrame();
+                });
+            });
+        }
+    };
+
+    // --- GESTIÓN DE DIBUJO ---
+    const DrawManager = {
+        clearDraw() {
+            if (!isAuthorized) return;
+            dom.draw.innerHTML = '';
+            appState.arrows = [];
+            appState.strokes = [];
+            StorageManager.saveArrows();
+            StorageManager.saveStrokes();
+        },
+        clearArrows() {
+            if (!isAuthorized) return;
+            appState.arrows = [];
+            DrawManager.renderDraw();
+            StorageManager.saveArrows();
+        },
+        clearStrokes() {
+            if (!isAuthorized) return;
+            appState.strokes = [];
+            DrawManager.renderDraw();
+            StorageManager.saveStrokes();
+        },
+        setTool(tool) {
+            if (!isAuthorized) return;
+            appState.tool = tool;
+            dom.toolArrowsBtn.classList.remove('active', 'alt');
+            dom.toolPenBtn.classList.remove('active', 'alt');
+            if (tool === 'arrows') {
+                dom.toolArrowsBtn.classList.add('active');
+                dom.toolPenBtn.classList.add('alt');
+                dom.toolArrowsBtn.textContent = 'Frecce: Attivo';
+                dom.toolPenBtn.textContent = 'Matita: Inattiva';
+            } else {
+                dom.toolPenBtn.classList.add('active');
+                dom.toolArrowsBtn.classList.add('alt');
+                dom.toolPenBtn.textContent = 'Matita: Attiva';
+                dom.toolArrowsBtn.textContent = 'Frecce: Inattive';
+            }
+            if (tool === 'arrows' || tool === 'pen') dom.draw.style.pointerEvents = 'auto';
+            else dom.draw.style.pointerEvents = 'none';
+        },
+        undoLast() {
+            if (!isAuthorized) return;
+            if (appState.arrows.length > appState.strokes.length) {
+                appState.arrows.pop();
+                StorageManager.saveArrows();
+            } else if (appState.strokes.length > 0) {
+                appState.strokes.pop();
+                StorageManager.saveStrokes();
+            }
+            DrawManager.renderDraw();
+        },
+        renderDraw() {
+            dom.draw.innerHTML = '';
+            appState.strokes.forEach(stroke => {
+                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                const points = stroke.points.map(p => `${p.x},${p.y}`).join(' ');
+                polyline.setAttribute('points', points);
+                polyline.setAttribute('fill', 'none');
+                polyline.setAttribute('stroke', stroke.color);
+                polyline.setAttribute('stroke-width', stroke.width);
+                polyline.setAttribute('stroke-linecap', 'round');
+                polyline.setAttribute('stroke-linejoin', 'round');
+                if (stroke.dashed) polyline.setAttribute('stroke-dasharray', '12 8');
+                dom.draw.appendChild(polyline);
+            });
+
+            appState.arrows.forEach(arrow => {
+                const { x1, y1, x2, y2, color, width, dashed } = arrow;
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+                line.setAttribute('stroke', color); line.setAttribute('stroke-width', width);
+                line.setAttribute('stroke-linecap', 'round');
+                if (dashed) line.setAttribute('stroke-dasharray', '12 8');
+                dom.draw.appendChild(line);
+
+                const angle = Math.atan2(y2 - y1, x2 - x1);
+                const size = width * 2.5;
+                const head = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                const points = [
+                    `${x2},${y2}`,
+                    `${x2 - size * Math.cos(angle - Math.PI / 6)},${y2 - size * Math.sin(angle - Math.PI / 6)}`,
+                    `${x2 - size * Math.cos(angle + Math.PI / 6)},${y2 - size * Math.sin(angle + Math.PI / 6)}`
+                ];
+                head.setAttribute('points', points.join(' '));
+                head.setAttribute('fill', color);
+                dom.draw.appendChild(head);
+            });
+            UnitsManager.clearPassPreview();
+        },
+        enableDrawing() {
+            // Solo habilitar el dibujo cuando se hace clic específicamente para dibujar
+            // No capturar todos los eventos del pointerdown
+            dom.draw.addEventListener('pointerdown', (e) => {
+                // Solo procesar si es un clic directo en el área de dibujo y no hay selección activa
+                if (appState.tool === 'arrows' || appState.tool === 'pen') {
+                    DrawManager.onPointerDown(e);
+                }
+            }, { passive: false });
+            
+            dom.draw.addEventListener('pointerup', DrawManager.onPointerUp, { passive: false });
+        },
+        onPointerDown(e) {
+            if (!isAuthorized) return;
+            if (e.button !== 0) return;
+            
+            // NUEVA CONDICIÓN: Si estamos en modo flechas o lápiz pero queremos seleccionar jugadores
+            // Permitir la selección en lugar del dibujo cuando se hace clic en áreas vacías
+            if ((appState.tool === 'arrows' || appState.tool === 'pen') && 
+                !e.target.closest('.player') && 
+                !e.target.closest('#ball')) {
+                // Permitir que el evento continúe para la selección de jugadores
+                return;
+            }
+            
+            e.preventDefault();
+            const { x, y } = LayoutManager.clientToBoard(e);
+            appState.startPoint = { x, y };
+
+            if (appState.tool === 'arrows') {
+                appState.drawingArrow = true;
+                DrawManager.drawArrowPreview(x, y, x, y);
+            } else if (appState.tool === 'pen') {
+                appState.drawingStroke = true;
+                appState.currentStroke = {
+                    points: [{ x, y }],
+                    color: dom.strokeColorSel.value,
+                    width: dom.strokeWidthSel.value,
+                    dashed: dom.dashedToggle.checked
+                };
+            }
+
+            const onMove = ev => {
+                if (ev.pointerId !== e.pointerId) return;
+                ev.preventDefault();
+                const { x, y } = LayoutManager.clientToBoard(ev);
+                const currX = clamp(x, 0, WIDTH);
+                const currY = clamp(y, 0, HEIGHT);
+                if (appState.tool === 'arrows' && appState.drawingArrow) {
+                    DrawManager.drawArrowPreview(appState.startPoint.x, appState.startPoint.y, currX, currY);
+                } else if (appState.tool === 'pen' && appState.drawingStroke) {
+                    appState.currentStroke.points.push({ x: currX, y: currY });
+                    DrawManager.drawStrokePreview(appState.currentStroke);
+                }
+            };
+
+            const onUp = ev => {
+                if (ev.pointerId !== e.pointerId) return;
+                document.removeEventListener('pointermove', onMove);
+                document.removeEventListener('pointerup', onUp);
+                DrawManager.clearPreview();
+
+                const { x, y } = LayoutManager.clientToBoard(ev);
+                const endX = clamp(x, 0, WIDTH);
+                const endY = clamp(y, 0, HEIGHT);
+
+                if (appState.tool === 'arrows' && appState.drawingArrow) {
+                    if (dist(appState.startPoint.x, appState.startPoint.y, endX, endY) > 10) {
+                        appState.arrows.push({
+                            x1: appState.startPoint.x, y1: appState.startPoint.y,
+                            x2: endX, y2: endY,
+                            color: dom.strokeColorSel.value,
+                            width: dom.strokeWidthSel.value,
+                            dashed: dom.dashedToggle.checked
+                        });
+                        StorageManager.saveArrows();
+                    }
+                    appState.drawingArrow = false;
+                } else if (appState.tool === 'pen' && appState.drawingStroke) {
+                    if (appState.currentStroke.points.length > 1) {
+                        appState.strokes.push(appState.currentStroke);
+                        StorageManager.saveStrokes();
+                    }
+                    appState.drawingStroke = false;
+                    appState.currentStroke = null;
+                }
+                DrawManager.renderDraw();
+            };
+
+            document.addEventListener('pointermove', onMove, { passive: false });
+            document.addEventListener('pointerup', onUp, { passive: false });
+        },
+        drawArrowPreview(x1, y1, x2, y2) {
+            let line = document.getElementById('arrowPreviewLine');
+            let head = document.getElementById('arrowPreviewHead');
+            if (!line) {
+                line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                head = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                line.id = 'arrowPreviewLine';
+                head.id = 'arrowPreviewHead';
+                dom.draw.appendChild(line);
+                dom.draw.appendChild(head);
+            }
+            const color = dom.strokeColorSel.value;
+            const width = dom.strokeWidthSel.value;
+            const dashed = dom.dashedToggle.checked;
+
+            line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+            line.setAttribute('stroke', color); line.setAttribute('stroke-width', width);
+            line.setAttribute('stroke-linecap', 'round');
+            if (dashed) line.setAttribute('stroke-dasharray', '12 8'); else line.removeAttribute('stroke-dasharray');
+
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            const size = width * 2.5;
+            const points = [
+                `${x2},${y2}`,
+                `${x2 - size * Math.cos(angle - Math.PI / 6)},${y2 - size * Math.sin(angle - Math.PI / 6)}`,
+                `${x2 - size * Math.cos(angle + Math.PI / 6)},${y2 - size * Math.sin(angle + Math.PI / 6)}`
+            ];
+            head.setAttribute('points', points.join(' '));
+            head.setAttribute('fill', color);
+        },
+        drawStrokePreview(stroke) {
+            let polyline = document.getElementById('strokePreview');
+            if (!polyline) {
+                polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                polyline.id = 'strokePreview';
+                dom.draw.appendChild(polyline);
+            }
+            const points = stroke.points.map(p => `${p.x},${p.y}`).join(' ');
+            polyline.setAttribute('points', points);
+            polyline.setAttribute('fill', 'none');
+            polyline.setAttribute('stroke', stroke.color);
+            polyline.setAttribute('stroke-width', stroke.width);
+            polyline.setAttribute('stroke-linecap', 'round');
+            polyline.setAttribute('stroke-linejoin', 'round');
+            if (stroke.dashed) polyline.setAttribute('stroke-dasharray', '12 8'); else polyline.removeAttribute('stroke-dasharray');
+        },
+        clearPreview() {
+            const arr = document.getElementById('arrowPreviewLine'); if (arr) arr.remove();
+            const head = document.getElementById('arrowPreviewHead'); if (head) head.remove();
+            const strk = document.getElementById('strokePreview'); if (strk) strk.remove();
+        },
+        onPointerUp(e) {
+            // Handler para pointerup
+        }
+    };
+
+    // --- GESTIÓN DE ANIMACIÓN ---
+    const TimelineManager = {
+        recordFrame() {
+            if (!isAuthorized) return;
+            const players = [...dom.playersLayer.children].map(el => ({
+                team: el.dataset.team, number: +el.dataset.number,
+                x: parseFloat(el.style.left), y: parseFloat(el.style.top)
+            }));
+            const ball = { x: parseFloat(dom.ball.style.left) || WIDTH / 2, y: parseFloat(dom.ball.style.top) || HEIGHT / 2 };
+            const arrows = JSON.parse(JSON.stringify(appState.arrows));
+            const strokes = JSON.parse(JSON.stringify(appState.strokes));
+
+            if (appState.playIndex < appState.timeline.length) {
+                appState.timeline.splice(appState.playIndex, 0, { players, ball, arrows, strokes });
+                appState.playIndex++;
+            } else {
+                appState.timeline.push({ players, ball, arrows, strokes });
+                appState.playIndex = appState.timeline.length;
+            }
+
+            TimelineManager.updateScrubber();
+            StorageManager.saveTimeline();
+        },
+        clearTimeline() {
+            if (!isAuthorized) return;
+            if (!confirm('¿Estás seguro de que quieres eliminar la animación? Esto no afecta las posiciones de inicio.')) return;
+            appState.timeline = [];
+            appState.playIndex = 0;
+            TimelineManager.updateScrubber();
+            StorageManager.saveTimeline();
+        },
+        renderInterpolatedFrame(fromIndex, t) {
+            if (isNaN(t)) t = 0;
+            if (t < 0) t = 0;
+            if (t > 1) t = 1;
+
+            const f0 = appState.timeline[fromIndex];
+            const f1 = appState.timeline[fromIndex + 1];
+            if (!f0 || !f1) {
+                if (f0) TimelineManager.loadFrame(fromIndex);
+                return;
+            }
+
+            const playersMap = new Map();
+            [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+            f0.players.forEach(p0 => {
+                const el = playersMap.get(p0.team + p0.number);
+                if (el) {
+                    const p1 = f1.players.find(pp => pp.team === p0.team && pp.number === p0.number) || p0;
+                    const ix = p0.x + (p1.x - p0.x) * t;
+                    const iy = p0.y + (p1.y - p0.y) * t;
+                    el.style.left = ix + 'px';
+                    el.style.top = iy + 'px';
+                }
+            });
+
+            const bx = f0.ball.x + (f1.ball.x - f0.ball.x) * t;
+            const by = f0.ball.y + (f1.ball.y - f0.ball.y) * t;
+            UnitsManager.placeBall(bx, by);
+
+            appState.arrows = JSON.parse(JSON.stringify(f0.arrows));
+            appState.strokes = JSON.parse(JSON.stringify(f0.strokes));
+            DrawManager.renderDraw();
+
+            appState.playIndex = fromIndex;
+            TimelineManager.updateScrubber();
+            LayoutManager.applyUprightTransforms();
+        },
+        loadFrame(index) {
+            const frame = appState.timeline[index];
+            if (!frame) return;
+
+            const playersMap = new Map();
+            [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+            frame.players.forEach(p => {
+                const el = playersMap.get(p.team + p.number);
+                if (el) {
+                    el.style.left = p.x + 'px';
+                    el.style.top = p.y + 'px';
+                }
+            });
+
+            UnitsManager.placeBall(frame.ball.x, frame.ball.y);
+
+            appState.arrows = JSON.parse(JSON.stringify(frame.arrows));
+            appState.strokes = JSON.parse(JSON.stringify(frame.strokes));
+            DrawManager.renderDraw();
+
+            appState.playIndex = index;
+            TimelineManager.updateScrubber();
+            LayoutManager.applyUprightTransforms();
+        },
+        updateScrubber() {
+            const count = appState.timeline.length;
+            dom.frameCountEl.textContent = count;
+            dom.frameTotal.textContent = count;
+            dom.scrubber.max = Math.max(0, count - 1);
+            dom.scrubber.value = appState.playIndex;
+            dom.scrubberVal.textContent = appState.playIndex;
+            if (count === 0) dom.scrubber.value = 0;
+        },
+        handleScrubberChange(e) {
+            const index = parseInt(e.target.value);
+            if (index !== appState.playIndex && index < appState.timeline.length) {
+                TimelineManager.loadFrame(index);
+            }
+        },
+        play(timestamp) {
+            if (!appState.playing || appState.timeline.length < 2) {
+                appState.playing = false;
+                appState.paused = false;
+                dom.playBtn.textContent = 'Play';
+                return;
+            }
+
+            if (appState.paused) return;
+
+            const dur = (isNaN(appState.segmentDuration) || appState.segmentDuration < 16) ? 800 : appState.segmentDuration;
+
+            if (appState.fromFrame == null) {
+                if (isNaN(appState.playIndex) || appState.playIndex < 0 || appState.playIndex >= appState.timeline.length - 1) {
+                    appState.playIndex = 0;
+                }
+                appState.fromFrame = appState.playIndex;
+                appState.segmentStartTime = timestamp;
+                TimelineManager.renderInterpolatedFrame(appState.fromFrame, 0);
+            }
+
+            if (appState.fromFrame >= appState.timeline.length - 1) {
+                appState.playing = false;
+                appState.paused = false;
+                appState.fromFrame = null;
+                dom.playBtn.textContent = 'Play';
+                TimelineManager.updateScrubber();
+                return;
+            }
+
+            const elapsed = timestamp - appState.segmentStartTime;
+            let t = elapsed / dur;
+
+            if (t >= 1) {
+                appState.fromFrame += 1;
+                appState.playIndex = appState.fromFrame;
+                appState.segmentStartTime = timestamp;
+
+                if (appState.fromFrame >= appState.timeline.length - 1) {
+                    TimelineManager.loadFrame(appState.playIndex);
+                    appState.playing = false;
+                    appState.paused = false;
+                    appState.fromFrame = null;
+                    dom.playBtn.textContent = 'Play';
+                    TimelineManager.updateScrubber();
+                    return;
+                } else {
+                    TimelineManager.renderInterpolatedFrame(appState.fromFrame, 0);
+                }
+            } else {
+                TimelineManager.renderInterpolatedFrame(appState.fromFrame, t);
+            }
+
+            appState.rafId = requestAnimationFrame(TimelineManager.play);
+        },
+        startPlay() {
+            if (appState.timeline.length < 2) return;
+            const val = parseInt(dom.speedInput.value);
+            appState.segmentDuration = (isNaN(val) || val < 16) ? 800 : val;
+            appState.playing = true;
+            appState.paused = false;
+            appState.fromFrame = null;
+            dom.playBtn.textContent = 'Playing...';
+            cancelAnimationFrame(appState.rafId);
+            appState.rafId = requestAnimationFrame(TimelineManager.play);
+        },
+        pausePlay() {
+            appState.paused = true;
+            try { cancelAnimationFrame(appState.rafId); } catch (e) {}
+            dom.playBtn.textContent = 'Play';
+            dom.pauseBtn.textContent = 'Paused';
+        },
+        stopPlay() {
+            appState.playing = false;
+            appState.paused = false;
+            appState.fromFrame = null;
+            try { cancelAnimationFrame(appState.rafId); } catch (e) {}
+            appState.fromFrame = null;
+            dom.playBtn.textContent = 'Play';
+            dom.pauseBtn.textContent = 'Pause';
+            cancelAnimationFrame(appState.rafId);
+            TimelineManager.loadFrame(0);
+        }
+    };
+
+    // --- GESTIÓN DE ALMACENAMIENTO ---
+    const StorageManager = {
+        async savePlay() {
+            if (!isAuthorized) return;
+            const name = dom.playNameInput.value?.trim();
+            if (!name) { alert('Inserisci un nome per la giocata.'); return; }
+            if (appState.timeline.length === 0) { alert('Aggiungi almeno un frame all\'animazione per salvare la giocata.'); return; }
+            
+            const playData = {
+                name,
+                timeline: appState.timeline,
+                arrows: appState.arrows,
+                strokes: appState.strokes,
+                positions: [...dom.playersLayer.children].map(el => ({ team: el.dataset.team, number: +el.dataset.number, x: parseFloat(el.style.left), y: parseFloat(el.style.top) })),
+                ball: centerOf(dom.ball),
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            try {
+                if (db) {
+                    await setDoc(doc(db, "plays", name), playData);
+                    AuthManager.showStatus(`Giocata "${name}" salvata en Firebase`, 'success');
+                } else {
+                    localStorage.setItem(PLAY_PREFIX + name, JSON.stringify(playData));
+                    AuthManager.showStatus(`Giocata "${name}" salvata localmente`, 'success');
+                }
+                StorageManager.updatePlaySelect();
+            } catch (e) {
+                console.error('Error saving play:', e);
+                alert('Errore nel salvataggio.');
+            }
+        },
+
+        async loadPlay(name) {
+            try {
+                let playData;
+                
+                if (db) {
+                    const docSnap = await getDoc(doc(db, "plays", name));
+                    if (docSnap.exists()) {
+                        playData = docSnap.data();
+                    } else {
+                        alert("Giocata non trovata en Firebase.");
+                        return;
+                    }
+                } else {
+                    const rawData = localStorage.getItem(PLAY_PREFIX + name);
+                    if (!rawData) return;
+                    playData = JSON.parse(rawData);
+                }
+
+                appState.timeline = playData.timeline || [];
+                TimelineManager.updateScrubber();
+                
+                appState.arrows = playData.arrows || [];
+                appState.strokes = playData.strokes || [];
+                
+                if (appState.timeline.length > 0) {
+                    TimelineManager.loadFrame(0);
+                } else if (playData.positions) {
+                    const playersMap = new Map();
+                    [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+                    playData.positions.forEach(p => {
+                        const el = playersMap.get(p.team + p.number);
+                        if (el) {
+                            el.style.left = p.x + 'px';
+                            el.style.top = p.y + 'px';
+                        }
+                    });
+                    UnitsManager.placeBall(playData.ball.x, playData.ball.y);
+                    DrawManager.renderDraw();
+                } else {
+                    DrawManager.renderDraw();
+                }
+
+                dom.playNameInput.value = name;
+                StorageManager.saveTimeline();
+                StorageManager.saveArrows();
+                StorageManager.saveStrokes();
+                StorageManager.savePositions();
+                StorageManager.saveBall();
+                LayoutManager.applyUprightTransforms();
+                
+                AuthManager.showStatus(`Giocata "${name}" caricata`, 'success');
+            } catch (error) {
+                console.error('Error loading play:', error);
+                alert('Errore nel caricamento della giocata.');
+            }
+        },
+
+        async deletePlay() {
+            if (!isAuthorized) return;
+            const name = dom.loadPlaySel.value;
+            if (name && confirm(`¿Estás seguro de que quieres eliminar la giocata "${name}"?`)) {
+                try {
+                    if (db) {
+                        await deleteDoc(doc(db, "plays", name));
+                    } else {
+                        localStorage.removeItem(PLAY_PREFIX + name);
+                    }
+                    StorageManager.updatePlaySelect();
+                    dom.playNameInput.value = '';
+                    AuthManager.showStatus(`Giocata "${name}" eliminata`, 'success');
+                } catch (error) {
+                    console.error('Error deleting play:', error);
+                    alert('Errore nell\'eliminazione della giocata.');
+                }
+            }
+        },
+
+        async updatePlaySelect() {
+            dom.loadPlaySel.innerHTML = '<option value="">-- Carica giocata salvata --</option>';
+            
+            try {
+                let plays = [];
+                
+                if (db && currentUser) {
+                    const q = query(collection(db, "plays"));
+                    const querySnapshot = await getDocs(q);
+                    querySnapshot.forEach((doc) => {
+                        plays.push(doc.id);
+                    });
+                } else {
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key.startsWith(PLAY_PREFIX)) {
+                            plays.push(key.substring(PLAY_PREFIX.length));
+                        }
+                    }
+                }
+                
+                plays.sort().forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    dom.loadPlaySel.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error updating play select:', error);
+            }
+        },
+
+        // Métodos existentes de localStorage
+        savePositions() {
+            const positions = [...dom.playersLayer.children].map(el => ({
+                team: el.dataset.team, number: +el.dataset.number,
+                x: parseFloat(el.style.left), y: parseFloat(el.style.top)
+            }));
+            localStorage.setItem(POS_KEY, JSON.stringify(positions));
+        },
+
+        loadPositions() {
+            const saved = localStorage.getItem(POS_KEY);
+            if (!saved) { UnitsManager.createPlayers(); return; }
+            const positions = JSON.parse(saved);
+            const playersMap = new Map();
+            UnitsManager.createPlayers();
+            [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+            positions.forEach(p => {
+                const el = playersMap.get(p.team + p.number);
+                if (el) {
+                    el.style.left = p.x + 'px';
+                    el.style.top = p.y + 'px';
+                }
+            });
+            LayoutManager.applyUprightTransforms();
+        },
+
+        saveBall() {
+            const ball = centerOf(dom.ball);
+            localStorage.setItem(BALL_KEY, JSON.stringify(ball));
+        },
+
+        loadBall() {
+            const saved = localStorage.getItem(BALL_KEY);
+            if (!saved) return;
+            const pos = JSON.parse(saved);
+            UnitsManager.placeBall(pos.x, pos.y);
+        },
+
+        saveArrows() { localStorage.setItem(ARROW_KEY, JSON.stringify(appState.arrows)); },
+        
+        loadArrows() {
+            const saved = localStorage.getItem(ARROW_KEY);
+            if (saved) appState.arrows = JSON.parse(saved);
+        },
+
+        saveStrokes() { localStorage.setItem(STROKE_KEY, JSON.stringify(appState.strokes)); },
+        
+        loadStrokes() {
+            const saved = localStorage.getItem(STROKE_KEY);
+            if (saved) appState.strokes = JSON.parse(saved);
+        },
+
+        saveTimeline() {
+            localStorage.setItem(TL_KEY, JSON.stringify(appState.timeline));
+        },
+
+        loadTimeline() {
+            const saved = localStorage.getItem(TL_KEY);
+            if (saved) appState.timeline = JSON.parse(saved);
+            TimelineManager.updateScrubber();
+        },
+
+        exportTimeline() {
+            const json = JSON.stringify(appState.timeline, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = (dom.playNameInput.value?.trim() || 'lavagna') + '_animazione.json';
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+        },
+
+        importTimeline() {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'application/json';
+            input.onchange = e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = e => {
+                    try {
+                        const json = e.target.result;
+                        const timeline = JSON.parse(json);
+                        if (Array.isArray(timeline) && timeline.every(f => f.players && f.ball)) {
+                            appState.timeline = timeline;
+                            StorageManager.saveTimeline();
+                            TimelineManager.loadFrame(0);
+                            alert(`Animazione importata: ${timeline.length} frames.`);
+                        } else {
+                            throw new Error("Formato JSON non valido per la timeline.");
+                        }
+                    } catch (err) {
+                        alert(`Errore nell'importazione: ${err.message}`);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        },
+
+        duplicatePlay() {
+            if (!isAuthorized) return;
+            const originalName = dom.playNameInput.value?.trim();
+            if (!originalName) { alert('Carica prima una giocata per duplicarla.'); return; }
+            const newName = prompt(`Duplicar "${originalName}" como:`);
+            if (newName && newName.trim()) {
+                const rawData = localStorage.getItem(PLAY_PREFIX + originalName);
+                if (rawData) {
+                    localStorage.setItem(PLAY_PREFIX + newName.trim(), rawData);
+                    dom.playNameInput.value = newName.trim();
+                    StorageManager.updatePlaySelect();
+                    dom.loadPlaySel.value = newName.trim();
+                    alert(`Giocata duplicata como "${newName.trim()}".`);
+                }
+            }
+        },
+    };
+
+    // --- EXPORTACIÓN ---
+    const ExportManager = {
+        drawPitch(ctx) {
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+            ctx.fillStyle = '#137a46'; 
+            ctx.fillRect(0, 0, WIDTH, HEIGHT); 
+
+            const svgEl = dom.board.querySelector('.lines');
+            if (!svgEl) return;
+
+            let tempLabels = [];
+            if (dom.toggleLabelsBtn.classList.contains('active')) {
+                [...dom.playersLayer.children].forEach(el => {
+                    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    label.classList.add('label');
+                    label.setAttribute('x', parseFloat(el.style.left) - 10); 
+                    label.setAttribute('y', parseFloat(el.style.top) + 25); 
+                    label.textContent = el.textContent;
+                    svgEl.appendChild(label);
+                    tempLabels.push(label);
+                });
+            }
+
+            const svgData = new XMLSerializer().serializeToString(svgEl);
+            const img = new Image();
+            
+            return new Promise(resolve => {
+                img.onload = () => {
+                    ctx.drawImage(img, 0, 0);
+                    tempLabels.forEach(l => l.remove());
+                    resolve();
+                };
+                img.onerror = (e) => {
+                    console.error("Error cargando SVG del campo en canvas:", e);
+                    tempLabels.forEach(l => l.remove());
+                    resolve();
+                };
+                img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+            });
+        },
+
+        drawPlayer(ctx, p) {
+            const size = 40;
+            const radius = size / 2;
+            const font = 'bold 14px system-ui';
+            
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2, true);
+            ctx.fillStyle = (p.team === 'blue' ? '#0d6efd' : '#e63946');
+            ctx.fill();
+
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.fillStyle = '#fff';
+            ctx.font = font;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(p.number, 0, 1);
+            
+            ctx.restore();
+        },
+
+        drawBall(ctx, b) {
+            const W = 50, H = 30;
+            ctx.save();
+            ctx.translate(b.x, b.y);
+            ctx.rotate(-15 * Math.PI / 180);
+
+            ctx.beginPath();
+            ctx.ellipse(0, 0, W / 2, H / 2, 0, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffd400';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.setLineDash([8, 6]);
+            ctx.ellipse(0, 0, W / 2 - 6, H / 2 - 6, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0,0,0,.25)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+        },
+
+        drawStroke(ctx, s) {
+            if (s.points.length < 2) return;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(s.points[0].x, s.points[0].y);
+            for (let i = 1; i < s.points.length; i++) {
+                ctx.lineTo(s.points[i].x, s.points[i].y);
+            }
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = s.width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            if (s.dashed) ctx.setLineDash([12, 8]);
+            ctx.stroke();
+            ctx.restore();
+        },
+
+        drawArrow(ctx, a) {
+            const { x1, y1, x2, y2, color, width, dashed } = a;
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            const size = width * 2.5;
+
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineCap = 'round';
+            if (dashed) ctx.setLineDash([12, 8]);
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 6), y2 - size * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(x2 - size * Math.cos(angle + Math.PI / 6), y2 - size * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        },
+
+        getCurrentPlayersFromDOM() { 
+            return [...dom.playersLayer.children].map(el => ({ 
+                team: el.dataset.team, 
+                number: +el.dataset.number, 
+                x: parseFloat(el.style.left), 
+                y: parseFloat(el.style.top) 
+            })); 
+        },
+        
+        getCurrentBallFromDOM() { 
+            return { 
+                x: parseFloat(dom.ball.style.left) || WIDTH / 2, 
+                y: parseFloat(dom.ball.style.top) || HEIGHT / 2 
+            }; 
+        },
+
+        async renderFrameToCanvas(playersArr, ballPos, includeOverlays = true) {
+            await ExportManager.drawPitch(dom.ctx); 
+            playersArr.forEach(p => ExportManager.drawPlayer(dom.ctx, p)); 
+            ExportManager.drawBall(dom.ctx, ballPos);
+            
+            if (includeOverlays) { 
+                appState.strokes.forEach(s => ExportManager.drawStroke(dom.ctx, s)); 
+                appState.arrows.forEach(a => ExportManager.drawArrow(dom.ctx, a)); 
+            }
+        },
+
+        setupExportUI() {
+            if (!window.FFmpeg) {
+                dom.exportMp4Btn.disabled = true;
+                dom.exportMp4Btn.textContent = 'Exportar MP4 (instalar ffmpeg.wasm)';
+            }
+
+            dom.exportJpgBtn.addEventListener('click', async () => {
+                const playersNow = ExportManager.getCurrentPlayersFromDOM();
+                const ballNow = ExportManager.getCurrentBallFromDOM();
+                
+                await ExportManager.renderFrameToCanvas(playersNow, ballNow, true);
+                
+                const url = dom.exportCanvas.toDataURL('image/jpeg', 0.95);
+                const a = document.createElement('a'); a.href = url; 
+                a.download = (dom.playNameInput.value?.trim() || 'lavagna') + '_frame.jpg'; 
+                document.body.appendChild(a); a.click(); a.remove();
+            });
+
+            dom.exportVideoBtn.addEventListener('click', async () => {
+                if (appState.timeline.length < 2) { alert('Añade al menos 2 frames a la animación para exportar video.'); return; }
+                if (!window.MediaRecorder) { alert('Tu navegador no soporta MediaRecorder para exportar WebM.'); return; }
+
+                const stream = dom.exportCanvas.captureStream(30);
+                const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+                const chunks = [];
+                let isRecording = true;
+                
+                dom.exportVideoBtn.textContent = 'Grabando...';
+                dom.exportVideoBtn.disabled = true;
+
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url;
+                    a.download = (dom.playNameInput.value?.trim() || 'lavagna') + '_animazione.webm';
+                    document.body.appendChild(a); a.click(); a.remove();
+                    URL.revokeObjectURL(url);
+                    dom.exportVideoBtn.textContent = 'Exportar video (WebM)';
+                    dom.exportVideoBtn.disabled = false;
+                    TimelineManager.loadFrame(0);
+                };
+
+                recorder.start();
+                
+                const duration = parseInt(dom.speedInput.value);
+                const totalFrames = appState.timeline.length;
+                let currentFrame = 0;
+
+                const runFrame = async () => {
+                    if (currentFrame >= totalFrames || !isRecording) {
+                        recorder.stop();
+                        return;
+                    }
+
+                    const frameData = appState.timeline[currentFrame];
+                    await ExportManager.renderFrameToCanvas(frameData.players, frameData.ball, true);
+                    
+                    currentFrame++;
+                    setTimeout(runFrame, duration);
+                };
+                
+                await runFrame();
+            });
+
+            dom.exportMp4Btn.addEventListener('click', () => {
+                const win = window.open('exporter_mp4.html', '_blank', 'noopener');
+                if (!win) { alert('No pude abrir el exportador (popup bloqueado). Permití popups para este sitio.'); return; }
+                const payload = {
+                    timeline: appState.timeline,
+                    width: WIDTH,
+                    height: HEIGHT,
+                    segmentDuration: (isNaN(appState.segmentDuration) ? 800 : appState.segmentDuration),
+                    name: (dom.playNameInput?.value?.trim() || 'lavagna')
+                };
+                function onReady(e){
+                    if (e.source === win && e.data === 'EXPORTER_READY'){
+                        window.removeEventListener('message', onReady);
+                        win.postMessage(payload, '*');
+                    }
+                }
+                window.addEventListener('message', onReady);
+            });
+        },
+    };
+
+    // --- UI/EVENT HANDLERS ---
+    const UIManager = {
+        setupEventListeners() {
+            // Auth
+            dom.btnLogin.addEventListener('click', () => AuthManager.login());
+            dom.loginPassword.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') AuthManager.login();
+            });
+            dom.btnAuthAction.addEventListener('click', () => AuthManager.logout());
+
+            // Layout
+            window.addEventListener('resize', () => {
+                LayoutManager.fitBoard();
+                // Actualizar visibilidad del menú hamburguesa en resize
+                if (window.innerWidth <= 900 && dom.mainApp.style.display !== 'none') {
+                    dom.menuBtn.style.display = 'grid';
+                } else {
+                    dom.menuBtn.style.display = 'none';
+                }
+            });
+            dom.verticalFieldChk.addEventListener('change', () => { 
+                appState.layout.forceVertical = dom.verticalFieldChk.checked;
+                LayoutManager.fitBoard();
+            });
+
+            // Menu/Sidebar - Funcionalidad del menú hamburguesa
+            dom.menuBtn.addEventListener('click', () => { 
+                dom.sidebar.classList.add('open'); 
+                dom.scrim.classList.add('show'); 
+            });
+            dom.closeMenuBtn.addEventListener('click', () => { 
+                dom.sidebar.classList.remove('open'); 
+                dom.scrim.classList.remove('show'); 
+            });
+            dom.scrim.addEventListener('click', () => { 
+                dom.sidebar.classList.remove('open'); 
+                dom.scrim.classList.remove('show'); 
+            });
+
+            // Controles
+            dom.resetBtn.addEventListener('click', () => { 
+                if (!isAuthorized) return;
+                UnitsManager.createPlayers(); 
+                UnitsManager.placeBall(); 
+                DrawManager.clearDraw(); 
+                StorageManager.savePositions(); 
+                StorageManager.saveBall(); 
+                StorageManager.saveArrows(); 
+                StorageManager.saveStrokes(); 
+            });
+            dom.snapToggle.addEventListener('change', () => { LayoutManager.renderGrid(); });
+            dom.toggleLabelsBtn.addEventListener('click', (e) => {
+                e.target.classList.toggle('active');
+                e.target.textContent = e.target.classList.contains('active') ? 'Ocultar etichette' : 'Mostra etichette';
+                [...dom.playersLayer.children].forEach(el => el.style.fontSize = e.target.classList.contains('active') ? 'var(--player-font)' : '0');
+            });
+
+            // Dibujo
+            dom.toolArrowsBtn.addEventListener('click', () => DrawManager.setTool('arrows'));
+            dom.toolPenBtn.addEventListener('click', () => DrawManager.setTool('pen'));
+            dom.undoGenericBtn.addEventListener('click', DrawManager.undoLast);
+            dom.clearArrowsBtn.addEventListener('click', DrawManager.clearArrows);
+            dom.clearAllBtn.addEventListener('click', () => { 
+                if (!isAuthorized) return;
+                if (confirm('¿Quieres eliminar todos los dibujos (frecce y líneas)?')) DrawManager.clearDraw(); 
+            });
+
+            // Giocate/Plays
+            dom.savePlayBtn.addEventListener('click', StorageManager.savePlay);
+            dom.btnLoadPlay.addEventListener('click', () => { 
+                if (dom.loadPlaySel.value) StorageManager.loadPlay(dom.loadPlaySel.value); 
+            });
+            dom.deletePlayBtn.addEventListener('click', StorageManager.deletePlay);
+            dom.duplicatePlayBtn.addEventListener('click', StorageManager.duplicatePlay);
+
+            // Animación
+            dom.recordStepBtn.addEventListener('click', TimelineManager.recordFrame);
+            dom.scrubber.addEventListener('input', TimelineManager.handleScrubberChange);
+            dom.scrubber.addEventListener('change', TimelineManager.handleScrubberChange);
+            dom.prevFrameBtn.addEventListener('click', () => TimelineManager.loadFrame(Math.max(0, appState.playIndex - 1)));
+            dom.nextFrameBtn.addEventListener('click', () => TimelineManager.loadFrame(Math.min(appState.timeline.length - 1, appState.playIndex + 1)));
+            dom.playBtn.addEventListener('click', TimelineManager.startPlay);
+            dom.pauseBtn.addEventListener('click', TimelineManager.pausePlay);
+            dom.stopBtn.addEventListener('click', TimelineManager.stopPlay);
+            dom.clearTimelineBtn.addEventListener('click', TimelineManager.clearTimeline);
+            dom.exportTimelineBtn.addEventListener('click', StorageManager.exportTimeline);
+            dom.importTimelineBtn.addEventListener('click', StorageManager.importTimeline);
+
+            // Exportación
+            ExportManager.setupExportUI();
+        }
+    };
+
+    // ===== INIT =====
+    async function init(){
+        await AuthManager.init();
+        
+        // Solo inicializar la pizarra si el usuario está autorizado
+        if (isAuthorized && currentUser) {
+            LayoutManager.renderGrid(); 
+            DrawManager.setTool('arrows');
+            UnitsManager.createPlayers(); 
+            StorageManager.loadPositions();
+            StorageManager.loadArrows(); 
+            StorageManager.loadStrokes(); 
+            DrawManager.renderDraw();
+            UnitsManager.placeBall(WIDTH/2, HEIGHT/2); 
+            StorageManager.loadBall();
+            StorageManager.loadTimeline(); 
+            TimelineManager.updateScrubber();
+            
+            if (!Array.isArray(appState.timeline) || appState.timeline.length === 0) {
+                TimelineManager.recordFrame();
+                appState.playIndex = 0;
+                TimelineManager.updateScrubber();
+                StorageManager.saveTimeline();
+            }
+
+            DrawManager.enableDrawing();
+            dom.draw.style.pointerEvents = 'auto';
+            UnitsManager.enableDragBall(() => { 
+                StorageManager.saveBall(); 
+                if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); 
+            });
+            StorageManager.updatePlaySelect();
+            LayoutManager.fitBoard();
+            
+            InteractionManager.enableSelectionBox();
+        }
+        
+        UIManager.setupEventListeners();
+    }
+
+    init();
+  </script>
+</body>
+</html>
