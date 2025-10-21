@@ -943,7 +943,7 @@ service cloud.firestore {
         
         addPlayer() {
             const counts = this.countPlayers();
-            if (counts.total >= 15) {
+            if (counts.total >= 30) {
                 alert('Massimo 15 giocatori raggiunto!');
                 return null;
             }
