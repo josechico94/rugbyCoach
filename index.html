@@ -931,8 +931,8 @@ service cloud.firestore {
             const total = blueCount + redCount;
             dom.playerCount.textContent = total;
             
-            dom.addPlayerBtn.disabled = total >= 15;
-            dom.addPlayerBtn.textContent = total >= 15 ? 'Massimo 15 giocatori' : '+ Aggiungi Giocatore';
+            dom.addPlayerBtn.disabled = total >= 30;
+            dom.addPlayerBtn.textContent = total >= 30 ? 'Massimo 15 giocatori' : '+ Aggiungi Giocatore';
             
             return { blue: blueCount, red: redCount, total };
         },
