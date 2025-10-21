@@ -485,7 +485,7 @@
     // --- IMPORTS FIREBASE ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, deleteDoc, collection, query, onSnapshot, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, deleteDoc, collection, query, onSnapshot, getDoc, getDocs, where, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // --- CONFIGURACIÓN FIREBASE ACTUALIZADA ---
     const firebaseConfig = {
@@ -498,8 +498,6 @@
       measurementId: "G-9C66KXJ561"
     };
 
-    const AUTHORIZED_USERS_IDS = ['DFIT1r7ehKSkN5eB0ASZBOHp79B2', 'HlAYO8J5vuaKZkJa9f4rp5sHTOH2'];
-    
     // Variables globales Firebase
     let app, db = null, auth;
     let isAuthorized = false;
@@ -621,30 +619,23 @@
                 onAuthStateChanged(auth, (user) => {
                     currentUser = user;
                     if (user) {
-                        isAuthorized = AUTHORIZED_USERS_IDS.includes(user.uid);
-                        if (isAuthorized) {
-                            AuthManager.showApp();
-                            AuthManager.updateUI(true);
-                            AuthManager.showStatus(`¡Bienvenido ${user.email}! Modo Entrenador`, 'success');
-                            InteractionManager.enableSelectionBox();
-                            InteractionManager.reinitializePlayerInteractions();
-                            UnitsManager.enableDragBall(() => { 
-                                StorageManager.saveBall(); 
-                                if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); 
-                            });
-                        } else {
-                            AuthManager.showLogin();
-                            AuthManager.showStatus('Usuario no autorizado', 'error');
-                            setTimeout(() => {
-                                AuthManager.logout();
-                            }, 3000);
-                        }
+                        isAuthorized = true; // Ahora cualquier usuario autenticado está autorizado
+                        AuthManager.showApp();
+                        AuthManager.updateUI(true);
+                        AuthManager.showStatus(`¡Bienvenido ${user.email}! Modo Entrenador`, 'success');
+                        InteractionManager.enableSelectionBox();
+                        InteractionManager.reinitializePlayerInteractions();
+                        UnitsManager.enableDragBall(() => { 
+                            StorageManager.saveBall(); 
+                            if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); 
+                        });
+                        // Cargar las jugadas del usuario
+                        StorageManager.updatePlaySelect();
                     } else {
                         isAuthorized = false;
                         AuthManager.showLogin();
                         AuthManager.updateUI(false);
                     }
-                    StorageManager.updatePlaySelect();
                 });
                 
             } catch (error) {
@@ -658,12 +649,24 @@
         async testFirebaseConnection() {
             try {
                 // Intentar una operación simple para verificar permisos
-                const testDoc = doc(db, "plays", "test-connection");
-                await setDoc(testDoc, { test: true, timestamp: new Date() });
-                await deleteDoc(testDoc);
-                firebaseConnected = true;
-                AuthManager.updateFirebaseStatus(true);
-                console.log("✅ Firebase conectado correctamente");
+                const user = auth.currentUser;
+                if (user) {
+                    // Usar la nueva estructura: /users/{userId}/plays/{playId}
+                    const testDoc = doc(db, "users", user.uid, "plays", "test-connection");
+                    await setDoc(testDoc, { 
+                        test: true, 
+                        timestamp: new Date(),
+                        createdBy: user.uid,
+                        email: user.email
+                    });
+                    await deleteDoc(testDoc);
+                    firebaseConnected = true;
+                    AuthManager.updateFirebaseStatus(true);
+                    console.log("✅ Firebase conectado correctamente");
+                } else {
+                    firebaseConnected = false;
+                    AuthManager.updateFirebaseStatus(false);
+                }
             } catch (error) {
                 console.warn("❌ Firebase permissions issue:", error);
                 firebaseConnected = false;
@@ -677,9 +680,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /plays/{playId} {
+    // Cada usuario puede leer y escribir solo en su propia colección de jugadas
+    match /users/{userId}/plays/{playId} {
       allow read, write: if request.auth != null 
-        && request.auth.uid in ['DFIT1r7ehKSkN5eB0ASZBOHp79B2', 'HlAYO8J5vuaKZkJa9f4rp5sHTOH2'];
+        && request.auth.uid == userId;
     }
   }
 }
@@ -719,7 +723,7 @@ service cloud.firestore {
                 dom.btnAuthAction.style.display = 'block';
                 dom.btnAuthAction.textContent = 'Esci';
                 dom.statusDot.className = 'status-dot';
-                dom.statusText.textContent = 'Entrenador';
+                dom.statusText.textContent = currentUser.email;
                 AuthManager.setControlsEnabled(true);
             } else {
                 dom.btnAuthAction.style.display = 'none';
@@ -1710,7 +1714,7 @@ service cloud.firestore {
     // --- GESTIÓN DE ALMACENAMIENTO MEJORADA ---
     const StorageManager = {
         async savePlay() {
-            if (!isAuthorized) return;
+            if (!isAuthorized || !currentUser) return;
             const name = dom.playNameInput.value?.trim();
             if (!name) { alert('Inserisci un nome per la giocata.'); return; }
             if (appState.timeline.length === 0) { alert('Aggiungi almeno un frame all\'animazione per salvare la giocata.'); return; }
@@ -1723,13 +1727,15 @@ service cloud.firestore {
                 positions: [...dom.playersLayer.children].map(el => ({ team: el.dataset.team, number: +el.dataset.number, x: parseFloat(el.style.left), y: parseFloat(el.style.top) })),
                 ball: centerOf(dom.ball),
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
+                createdBy: currentUser.uid,
+                email: currentUser.email
             };
 
             try {
-                // Guardar en Firebase
+                // Guardar en Firebase con la nueva estructura: /users/{userId}/plays/{playId}
                 if (db && firebaseConnected) {
-                    await setDoc(doc(db, "plays", name), playData);
+                    await setDoc(doc(db, "users", currentUser.uid, "plays", name), playData);
                     AuthManager.showStatus(`✅ Giocata "${name}" salvata en Firebase`, 'success');
                 } else {
                     throw new Error('Firebase no disponible');
@@ -1760,10 +1766,10 @@ service cloud.firestore {
             try {
                 let playData;
                 
-                // Primero intentar cargar desde Firebase
-                if (db && firebaseConnected) {
+                // Primero intentar cargar desde Firebase con la nueva estructura
+                if (db && firebaseConnected && currentUser) {
                     try {
-                        const docSnap = await getDoc(doc(db, "plays", name));
+                        const docSnap = await getDoc(doc(db, "users", currentUser.uid, "plays", name));
                         if (docSnap.exists()) {
                             playData = docSnap.data();
                             console.log("✅ Giocata caricata da Firebase");
@@ -1839,13 +1845,13 @@ service cloud.firestore {
         },
 
         async deletePlay() {
-            if (!isAuthorized) return;
+            if (!isAuthorized || !currentUser) return;
             const name = dom.loadPlaySel.value;
             if (name && confirm(`¿Estás seguro de que quieres eliminar la giocata "${name}"?`)) {
                 try {
-                    // Eliminar de Firebase
+                    // Eliminar de Firebase con la nueva estructura
                     if (db && firebaseConnected) {
-                        await deleteDoc(doc(db, "plays", name));
+                        await deleteDoc(doc(db, "users", currentUser.uid, "plays", name));
                     }
                     // Siempre eliminar de localStorage también
                     localStorage.removeItem(PLAY_PREFIX + name);
@@ -1880,7 +1886,11 @@ service cloud.firestore {
                 // Luego intentar cargar desde Firebase si está disponible
                 if (db && firebaseConnected && currentUser && isAuthorized) {
                     try {
-                        const q = query(collection(db, "plays"));
+                        // Usar la nueva estructura: /users/{userId}/plays
+                        const q = query(
+                            collection(db, "users", currentUser.uid, "plays"),
+                            orderBy("updatedAt", "desc")
+                        );
                         const querySnapshot = await getDocs(q);
                         querySnapshot.forEach((doc) => {
                             const playName = doc.id;
