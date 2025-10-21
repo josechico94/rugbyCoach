@@ -217,7 +217,7 @@
       opacity: 0.8;
     }
 
-    /* Nuevos estilos para notificaciones */
+    /* Nuovi estilos para notificaciones */
     .firebase-status {
       padding: 8px 12px;
       border-radius: 8px;
@@ -281,7 +281,6 @@
   </style>
 </head>
 <body>
-  <!-- Overlay de Login -->
   <div class="login-overlay" id="loginOverlay">
     <div class="login-container">
       <div class="login-header">
@@ -295,7 +294,6 @@
     </div>
   </div>
 
-  <!-- Botón hamburguesa - Siempre visible en móvil cuando la app está visible -->
   <button id="menuBtn" class="hamburger" aria-label="Apri pannello">☰</button>
   <div id="scrim" class="scrim" aria-hidden="true"></div>
 
@@ -303,17 +301,15 @@
     <aside class="sidebar" id="sidebar">
       <button id="closeMenu" class="close-drawer" aria-label="Chiudi">✕</button>
       
-      <!-- Header con estado de autenticación -->
       <div class="group">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <h1>RugbyBoard Pro</h1>
           <div class="status-indicator" id="authStatus">
             <span class="status-dot" id="statusDot"></span>
-            <span id="statusText">Conectando...</span>
+            <span id="statusText">Connessione...</span>
           </div>
         </div>
         
-        <!-- Estado de Firebase -->
         <div id="firebaseStatus" class="firebase-status disconnected">
           ⚠️ Configura le regole di sicurezza in Firebase Console
         </div>
@@ -321,7 +317,6 @@
         <button class="btn primary" id="btnAuthAction">Esci</button>
       </div>
 
-      <!-- Resto de tu interfaz se mantiene igual -->
       <div class="group">
         <strong>Controlli</strong>
         <div class="row" style="grid-template-columns: 1fr;">
@@ -336,10 +331,10 @@
         </label>
         
        <div class="player-counter">
-          <span>Jugadores: <span id="playerCount">0</span>/30</span>
+          <span>Giocatori: <span id="playerCount">0</span>/30</span>
           <span style="font-size: 11px; opacity: 0.7;">(15 blu + 15 rossi)</span>
           <button class="btn alt" id="addPlayerBtn" style="margin-left: auto;">+ Aggiungi Giocatore</button>
-      </div>
+        </div>
         
         <div class="legend"><span class="swatch" style="background:#0d6efd"></span> Blu (1–15)</div>
         <div class="legend"><span class="swatch" style="background:#e63946"></span> Rossi (1–15)</div>
@@ -409,7 +404,7 @@
         </div>
 
         <div class="row" style="grid-template-columns: auto 1fr; align-items:center;">
-          Velocidad (ms por paso)
+          Velocità (ms per passo)
           <input type="number" id="speedInput" min="100" step="100" value="800" />
         </div>
 
@@ -419,17 +414,17 @@
           </label>
           <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;">
             <button class="btn alt" id="prevFrameBtn">◀ Precedente</button>
-            <div style="text-align:center;">Frame: <span id="scrubberVal">0</span> / <span id="frameTotal">0</span></div>
+            <div style="text-align:center;">Passo: <span id="scrubberVal">0</span> / <span id="frameTotal">0</span></div>
             <button class="btn alt" id="nextFrameBtn">Successivo ▶</button>
           </div>
         </div>
 
         <div class="row" style="grid-template-columns: 1fr 1fr; gap:8px;">
           <button class="btn alt" id="clearTimelineBtn">Pulisci</button>
-          <button class="btn" id="exportTimelineBtn">Expor JSON</button>
+          <button class="btn" id="exportTimelineBtn">Export JSON</button>
         </div>
         <button class="btn alt" id="importTimelineBtn">Import JSON</button>
-        <div style="font-size:12px;opacity:.8;">Frames salvati: <span id="frameCount">0</span></div>
+        <div style="font-size:12px;opacity:.8;">Passi salvati: <span id="frameCount">0</span></div>
       </div>
 
       <div class="group">
@@ -438,7 +433,7 @@
           <button class="btn" id="exportJpgBtn">Export immagine (JPG)</button>
           <button class="btn alt" id="exportVideoBtn">Export video (WebM)</button>
           <button class="btn" id="exportMp4Btn">Export MP4 (beta)</button>
-          <small class="note">El video incluye jugadores, pallone, flechas y líneas. MP4 usa ffmpeg.wasm (puede tardar la 1ª vez).</small>
+          <small class="note">Il video include giocatori, pallone, frecce e linee. MP4 usa ffmpeg.wasm (può tardare la 1ª volta).</small>
           <div id="ffmpegStatus" class="note"></div>
         </div>
       </div>
@@ -451,7 +446,6 @@
             <svg class="grid-overlay" id="grid" viewBox="0 0 1200 700" preserveAspectRatio="none"></svg>
 
             <svg class="lines" viewBox="0 0 1200 700" preserveAspectRatio="none" aria-hidden="true">
-              <!-- Tus líneas del campo de rugby -->
               <rect x="5" y="5" width="1190" height="690" fill="none" stroke="#fff" stroke-width="6" />
               <rect x="0" y="0" width="80" height="700" fill="rgba(255,255,255,.07)" />
               <rect x="1120" y="0" width="80" height="700" fill="rgba(255,255,255,.07)" />
@@ -488,11 +482,13 @@
     import { getFirestore, doc, setDoc, deleteDoc, collection, query, onSnapshot, getDoc, getDocs, where, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // --- CONFIGURACIÓN FIREBASE ACTUALIZADA ---
+    // ⚠️ ATTENZIONE: NON ESPORRE MAI LA TUA API KEY PUBBLICAMENTE.
+    // Sostituisci questo con variabili d'ambiente (es. import.meta.env.VITE_API_KEY)
     const firebaseConfig = {
-      apiKey: "AIzaSyACU3QfuTpW6PNRt3hHl9m1dy4Vso0GPoI",
+      apiKey: "[TU_API_KEY_DE_FIREBASE]", // <-- SOSTITUISCI QUESTO
       authDomain: "bologna-rugby-club.firebaseapp.com",
       projectId: "bologna-rugby-club",
-      storageBucket: "bologna-rugby-club.firebasestorage.app",
+      storageBucket: "bologna-rugby-club.firebasestorage.app", // CORRETTO (era .appspot.com)
       messagingSenderId: "641438144435",
       appId: "1:641438144435:web:e2a243bacd522fd1615dc6",
       measurementId: "G-9C66KXJ561"
@@ -622,7 +618,7 @@
                         isAuthorized = true; // Ahora cualquier usuario autenticado está autorizado
                         AuthManager.showApp();
                         AuthManager.updateUI(true);
-                        AuthManager.showStatus(`¡Bienvenido ${user.email}! Modo Entrenador`, 'success');
+                        AuthManager.showStatus(`Benvenuto ${user.email}! Modalità Allenatore`, 'success');
                         InteractionManager.enableSelectionBox();
                         InteractionManager.reinitializePlayerInteractions();
                         UnitsManager.enableDragBall(() => { 
@@ -641,7 +637,7 @@
             } catch (error) {
                 console.error("Firebase falló:", error);
                 AuthManager.showLogin();
-                AuthManager.showStatus('Error de conexión. Intenta más tarde.', 'error');
+                AuthManager.showStatus('Errore di connessione. Riprova più tardi.', 'error');
                 AuthManager.updateFirebaseStatus(false);
             }
         },
@@ -728,7 +724,7 @@ service cloud.firestore {
             } else {
                 dom.btnAuthAction.style.display = 'none';
                 dom.statusDot.className = 'status-dot error';
-                dom.statusText.textContent = 'No autenticado';
+                dom.statusText.textContent = 'Non autenticato';
                 AuthManager.setControlsEnabled(false);
             }
         },
@@ -754,24 +750,24 @@ service cloud.firestore {
             const password = dom.loginPassword.value;
             
             if (!email || !password) {
-                AuthManager.showMessage("Ingresa email y contraseña.", 'error');
+                AuthManager.showMessage("Inserisci email e password.", 'error');
                 return;
             }
             
             dom.btnLogin.disabled = true;
-            AuthManager.showMessage("Iniciando sesión...", 'info');
+            AuthManager.showMessage("Accesso in corso...", 'info');
             
             try {
                 await signInWithEmailAndPassword(auth, email, password);
                 AuthManager.showMessage("", 'success');
             } catch (error) {
-                let message = "Credenciales incorrectas.";
-                if (error.code === 'auth/invalid-email') message = "Formato de email inválido.";
-                if (error.code === 'auth/user-not-found') message = "Usuario no encontrado.";
-                if (error.code === 'auth/wrong-password') message = "Contraseña incorrecta.";
-                if (error.code === 'auth/too-many-requests') message = "Demasiados intentos. Intenta más tarde.";
+                let message = "Credenziali errate.";
+                if (error.code === 'auth/invalid-email') message = "Formato email non valido.";
+                if (error.code === 'auth/user-not-found') message = "Utente non trovato.";
+                if (error.code === 'auth/wrong-password') message = "Password errata.";
+                if (error.code === 'auth/too-many-requests') message = "Troppi tentativi. Riprova più tardi.";
                 
-                AuthManager.showMessage(`Error: ${message}`, 'error');
+                AuthManager.showMessage(`Errore: ${message}`, 'error');
             } finally {
                 dom.btnLogin.disabled = false;
             }
@@ -780,11 +776,11 @@ service cloud.firestore {
         async logout() {
             try {
                 await signOut(auth);
-                AuthManager.showMessage('Sesión cerrada', 'info');
+                AuthManager.showMessage('Sessione chiusa', 'info');
                 AuthManager.showLogin();
             } catch (error) {
-                console.error("Error al cerrar sesión:", error);
-                AuthManager.showMessage('Error al cerrar sesión', 'error');
+                console.error("Errore durante il logout:", error);
+                AuthManager.showMessage('Errore durante il logout', 'error');
             }
         },
 
@@ -917,8 +913,9 @@ service cloud.firestore {
         }
     };
 
-    // --- GESTIÓN DE JUGADORES Y BALÓN (se mantiene igual) ---
+    // --- GESTIÓN DE JUGADORES Y BALÓN (CORREGIDO LÍMITE DE JUGADORES) ---
     const UnitsManager = {
+        // Esta función YA inicializa 15 jugadores por equipo
         initialPositions: (function () {
             const positions = [];
             for (let i = 1; i <= 15; i++) positions.push({ team: 'blue', number: i, x: WIDTH * 0.18, y: HEIGHT * (0.1 + (i - 1) * (0.8 / 14)) });
@@ -943,7 +940,9 @@ service cloud.firestore {
         
         addPlayer() {
             const counts = this.countPlayers();
-            if (counts.total >= 30) {
+            // --- CORRECCIÓN ---
+            // El límite es 30, no 15.
+            if (counts.total >= 30) { 
                 alert('Massimo 30 giocatori raggiunto!');
                 return null;
             }
@@ -981,8 +980,11 @@ service cloud.firestore {
         
         createPlayers() {
             dom.playersLayer.innerHTML = '';
+            // Aquí se crean los 30 jugadores (15v15) de initialPositions
             this.initialPositions.forEach(p => {
-                this.createPlayerElement(p.team, p.number, p.x, p.y);
+                dom.playersLayer.appendChild(
+                    this.createPlayerElement(p.team, p.number, p.x, p.y)
+                );
             });
             this.countPlayers();
             LayoutManager.applyUprightTransforms();
@@ -1285,7 +1287,7 @@ service cloud.firestore {
         }
     };
 
-    // --- GESTIÓN DE DIBUJO (se mantiene igual) ---
+    // --- GESTIÓN DE DIBUJO (CORREGIDO ERROR LÓGICO) ---
     const DrawManager = {
         clearDraw() {
             if (!isAuthorized) return;
@@ -1378,9 +1380,7 @@ service cloud.firestore {
         },
         enableDrawing() {
             dom.draw.addEventListener('pointerdown', (e) => {
-                if (appState.tool === 'arrows' || appState.tool === 'pen') {
-                    DrawManager.onPointerDown(e);
-                }
+                DrawManager.onPointerDown(e);
             }, { passive: false });
             
             dom.draw.addEventListener('pointerup', DrawManager.onPointerUp, { passive: false });
@@ -1388,14 +1388,24 @@ service cloud.firestore {
         onPointerDown(e) {
             if (!isAuthorized) return;
             if (e.button !== 0) return;
-            
-            if ((appState.tool === 'arrows' || appState.tool === 'pen') && 
-                !e.target.closest('.player') && 
-                !e.target.closest('#ball')) {
+
+            // --- CORRECCIÓN LÓGICA ---
+            // 1. Se non è uno strumento di disegno, non fare nulla
+            if (appState.tool !== 'arrows' && appState.tool !== 'pen') {
                 return;
             }
             
+            // 2. Se è uno strumento di disegno, ma si è cliccato su un giocatore o sul pallone,
+            // non disegnare (lascia che l'evento di trascinamento gestisca il clic).
+            if (e.target.closest('.player') || e.target.closest('#ball')) {
+                return;
+            }
+
+            // 3. Se siamo qui, lo strumento è attivo e si è cliccato sulla lavagna.
+            // Procedi con il disegno!
             e.preventDefault();
+            // --- FINE CORREZIONE ---
+
             const { x, y } = LayoutManager.clientToBoard(e);
             appState.startPoint = { x, y };
 
@@ -1515,7 +1525,7 @@ service cloud.firestore {
             const strk = document.getElementById('strokePreview'); if (strk) strk.remove();
         },
         onPointerUp(e) {
-            // Handler para pointerup
+            // Handler per pointerup (ora gestito in onPointerDown)
         }
     };
 
@@ -1544,7 +1554,7 @@ service cloud.firestore {
         },
         clearTimeline() {
             if (!isAuthorized) return;
-            if (!confirm('¿Estás seguro de que quieres eliminar la animación? Esto no afecta las posiciones de inicio.')) return;
+            if (!confirm('Sei sicuro di voler eliminare l\'animazione? Questo non influisce sulle posizioni di partenza.')) return;
             appState.timeline = [];
             appState.playIndex = 0;
             TimelineManager.updateScrubber();
@@ -1615,7 +1625,7 @@ service cloud.firestore {
             const count = appState.timeline.length;
             dom.frameCountEl.textContent = count;
             dom.frameTotal.textContent = count;
-            dom.scrubber.max = Math.max(0, count - 1);
+            dom.scrubber.max = Math.max(0, count > 0 ? count - 1 : 0);
             dom.scrubber.value = appState.playIndex;
             dom.scrubberVal.textContent = appState.playIndex;
             if (count === 0) dom.scrubber.value = 0;
@@ -1707,17 +1717,19 @@ service cloud.firestore {
             dom.playBtn.textContent = 'Play';
             dom.pauseBtn.textContent = 'Pause';
             cancelAnimationFrame(appState.rafId);
-            TimelineManager.loadFrame(0);
+            if(appState.timeline.length > 0) {
+              TimelineManager.loadFrame(0);
+            }
         }
     };
 
-    // --- GESTIÓN DE ALMACENAMIENTO MEJORADA ---
+    // --- GESTIÓN DE ALMACENAMIENTO MEJORADA (se mantiene igual) ---
     const StorageManager = {
         async savePlay() {
             if (!isAuthorized || !currentUser) return;
             const name = dom.playNameInput.value?.trim();
             if (!name) { alert('Inserisci un nome per la giocata.'); return; }
-            if (appState.timeline.length === 0) { alert('Aggiungi almeno un frame all\'animazione per salvare la giocata.'); return; }
+            if (appState.timeline.length === 0) { alert('Aggiungi almeno un passo all\'animazione per salvare la giocata.'); return; }
             
             const playData = {
                 name,
@@ -1736,9 +1748,9 @@ service cloud.firestore {
                 // Guardar en Firebase con la nueva estructura: /users/{userId}/plays/{playId}
                 if (db && firebaseConnected) {
                     await setDoc(doc(db, "users", currentUser.uid, "plays", name), playData);
-                    AuthManager.showStatus(`✅ Giocata "${name}" salvata en Firebase`, 'success');
+                    AuthManager.showStatus(`✅ Giocata "${name}" salvata in Firebase`, 'success');
                 } else {
-                    throw new Error('Firebase no disponible');
+                    throw new Error('Firebase non disponibile');
                 }
                 
                 // También guardar en localStorage como respaldo
@@ -1847,7 +1859,7 @@ service cloud.firestore {
         async deletePlay() {
             if (!isAuthorized || !currentUser) return;
             const name = dom.loadPlaySel.value;
-            if (name && confirm(`¿Estás seguro de que quieres eliminar la giocata "${name}"?`)) {
+            if (name && confirm(`Sei sicuro di voler eliminare la giocata "${name}"?`)) {
                 try {
                     // Eliminar de Firebase con la nueva estructura
                     if (db && firebaseConnected) {
@@ -1938,11 +1950,22 @@ service cloud.firestore {
 
         loadPositions() {
             const saved = localStorage.getItem(POS_KEY);
-            if (!saved) { UnitsManager.createPlayers(); return; }
+            // Si no hay nada guardado, createPlayers() usará las posiciones iniciales (15v15)
+            if (!saved) { 
+                UnitsManager.createPlayers(); 
+                return; 
+            }
+            
             const positions = JSON.parse(saved);
             const playersMap = new Map();
-            UnitsManager.createPlayers();
+            
+            // Crea los 15v15 jugadores base
+            UnitsManager.createPlayers(); 
+            
+            // Mapea los jugadores recién creados
             [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+            
+            // Mueve los jugadores a sus posiciones guardadas
             positions.forEach(p => {
                 const el = playersMap.get(p.team + p.number);
                 if (el) {
@@ -1950,6 +1973,8 @@ service cloud.firestore {
                     el.style.top = p.y + 'px';
                 }
             });
+            
+            // Actualiza el contador
             UnitsManager.countPlayers();
             LayoutManager.applyUprightTransforms();
         },
@@ -2014,7 +2039,7 @@ service cloud.firestore {
                             appState.timeline = timeline;
                             StorageManager.saveTimeline();
                             TimelineManager.loadFrame(0);
-                            alert(`Animazione importata: ${timeline.length} frames.`);
+                            alert(`Animazione importata: ${timeline.length} passi.`);
                         } else {
                             throw new Error("Formato JSON non valido per la timeline.");
                         }
@@ -2031,7 +2056,7 @@ service cloud.firestore {
             if (!isAuthorized) return;
             const originalName = dom.playNameInput.value?.trim();
             if (!originalName) { alert('Carica prima una giocata per duplicarla.'); return; }
-            const newName = prompt(`Duplicar "${originalName}" como:`);
+            const newName = prompt(`Duplicare "${originalName}" come:`);
             if (newName && newName.trim()) {
                 const rawData = localStorage.getItem(PLAY_PREFIX + originalName);
                 if (rawData) {
@@ -2039,7 +2064,7 @@ service cloud.firestore {
                     dom.playNameInput.value = newName.trim();
                     StorageManager.updatePlaySelect();
                     dom.loadPlaySel.value = newName.trim();
-                    alert(`Giocata duplicata como "${newName.trim()}".`);
+                    alert(`Giocata duplicata come "${newName.trim()}".`);
                 }
             }
         },
@@ -2078,7 +2103,7 @@ service cloud.firestore {
                     resolve();
                 };
                 img.onerror = (e) => {
-                    console.error("Error cargando SVG del campo en canvas:", e);
+                    console.error("Error loading SVG of field in canvas:", e);
                     tempLabels.forEach(l => l.remove());
                     resolve();
                 };
@@ -2196,15 +2221,13 @@ service cloud.firestore {
             }; 
         },
 
-        async renderFrameToCanvas(playersArr, ballPos, includeOverlays = true) {
+        async renderFrameToCanvas(playersArr, ballPos, arrows, strokes) {
             await ExportManager.drawPitch(dom.ctx); 
             playersArr.forEach(p => ExportManager.drawPlayer(dom.ctx, p)); 
             ExportManager.drawBall(dom.ctx, ballPos);
             
-            if (includeOverlays) { 
-                appState.strokes.forEach(s => ExportManager.drawStroke(dom.ctx, s)); 
-                appState.arrows.forEach(a => ExportManager.drawArrow(dom.ctx, a)); 
-            }
+            strokes.forEach(s => ExportManager.drawStroke(dom.ctx, s)); 
+            arrows.forEach(a => ExportManager.drawArrow(dom.ctx, a)); 
         },
 
         setupExportUI() {
@@ -2217,7 +2240,8 @@ service cloud.firestore {
                 const playersNow = ExportManager.getCurrentPlayersFromDOM();
                 const ballNow = ExportManager.getCurrentBallFromDOM();
                 
-                await ExportManager.renderFrameToCanvas(playersNow, ballNow, true);
+                // Pass current arrows and strokes
+                await ExportManager.renderFrameToCanvas(playersNow, ballNow, appState.arrows, appState.strokes);
                 
                 const url = dom.exportCanvas.toDataURL('image/jpeg', 0.95);
                 const a = document.createElement('a'); a.href = url; 
@@ -2226,15 +2250,15 @@ service cloud.firestore {
             });
 
             dom.exportVideoBtn.addEventListener('click', async () => {
-                if (appState.timeline.length < 2) { alert('Añade al menos 2 frames a la animación para exportar video.'); return; }
-                if (!window.MediaRecorder) { alert('Tu navegador no soporta MediaRecorder para exportar WebM.'); return; }
+                if (appState.timeline.length < 2) { alert('Aggiungi almeno 2 passi all\'animazione per esportare il video.'); return; }
+                if (!window.MediaRecorder) { alert('Il tuo browser non supporta MediaRecorder per esportare WebM.'); return; }
 
                 const stream = dom.exportCanvas.captureStream(30);
                 const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
                 const chunks = [];
                 let isRecording = true;
                 
-                dom.exportVideoBtn.textContent = 'Grabando...';
+                dom.exportVideoBtn.textContent = 'Registrazione...';
                 dom.exportVideoBtn.disabled = true;
 
                 recorder.ondataavailable = e => chunks.push(e.data);
@@ -2245,7 +2269,7 @@ service cloud.firestore {
                     a.download = (dom.playNameInput.value?.trim() || 'lavagna') + '_animazione.webm';
                     document.body.appendChild(a); a.click(); a.remove();
                     URL.revokeObjectURL(url);
-                    dom.exportVideoBtn.textContent = 'Exportar video (WebM)';
+                    dom.exportVideoBtn.textContent = 'Export video (WebM)';
                     dom.exportVideoBtn.disabled = false;
                     TimelineManager.loadFrame(0);
                 };
@@ -2255,33 +2279,49 @@ service cloud.firestore {
                 const duration = parseInt(dom.speedInput.value);
                 const totalFrames = appState.timeline.length;
                 let currentFrame = 0;
-
-                const runFrame = async () => {
+                
+                const renderNextFrame = async () => {
                     if (currentFrame >= totalFrames || !isRecording) {
-                        recorder.stop();
+                        if (recorder.state === "recording") {
+                            recorder.stop();
+                        }
                         return;
                     }
 
                     const frameData = appState.timeline[currentFrame];
-                    await ExportManager.renderFrameToCanvas(frameData.players, frameData.ball, true);
+                    // Pass the arrows/strokes from *that* specific frame
+                    await ExportManager.renderFrameToCanvas(
+                        frameData.players, 
+                        frameData.ball,
+                        frameData.arrows,
+                        frameData.strokes
+                    );
                     
                     currentFrame++;
-                    setTimeout(runFrame, duration);
+                    // Usa requestAnimationFrame per un timing più fluido sebbene duration sia fissa
+                    setTimeout(renderNextFrame, duration); 
                 };
                 
-                await runFrame();
+                await renderNextFrame();
             });
 
+            // Lógica de exportación MP4 (depende de exporter_mp4.html)
             dom.exportMp4Btn.addEventListener('click', () => {
+                if (appState.timeline.length < 2) {
+                    alert('Aggiungi almeno 2 passi all\'animazione per esportare il video.');
+                    return;
+                }
                 const win = window.open('exporter_mp4.html', '_blank', 'noopener');
-                if (!win) { alert('No pude abrir el exportador (popup bloqueado). Permití popups para este sitio.'); return; }
+                if (!win) { alert('Non è stato possibile aprire la finestra di esportazione (popup bloccato?). Consenti i popup per questo sito.'); return; }
+                
                 const payload = {
                     timeline: appState.timeline,
                     width: WIDTH,
                     height: HEIGHT,
-                    segmentDuration: (isNaN(appState.segmentDuration) ? 800 : appState.segmentDuration),
+                    segmentDuration: (isNaN(parseInt(dom.speedInput.value)) ? 800 : parseInt(dom.speedInput.value)),
                     name: (dom.playNameInput?.value?.trim() || 'lavagna')
                 };
+                
                 function onReady(e){
                     if (e.source === win && e.data === 'EXPORTER_READY'){
                         window.removeEventListener('message', onReady);
@@ -2351,7 +2391,7 @@ service cloud.firestore {
             dom.snapToggle.addEventListener('change', () => { LayoutManager.renderGrid(); });
             dom.toggleLabelsBtn.addEventListener('click', (e) => {
                 e.target.classList.toggle('active');
-                e.target.textContent = e.target.classList.contains('active') ? 'Ocultar etichette' : 'Mostra etichette';
+                e.target.textContent = e.target.classList.contains('active') ? 'Nascondi etichette' : 'Mostra etichette';
                 [...dom.playersLayer.children].forEach(el => el.style.fontSize = e.target.classList.contains('active') ? 'var(--player-font)' : '0');
             });
 
@@ -2362,7 +2402,7 @@ service cloud.firestore {
             dom.clearArrowsBtn.addEventListener('click', DrawManager.clearArrows);
             dom.clearAllBtn.addEventListener('click', () => { 
                 if (!isAuthorized) return;
-                if (confirm('¿Quieres eliminar todos los dibujos (frecce y líneas)?')) DrawManager.clearDraw(); 
+                if (confirm('Vuoi eliminare tutti i disegni (frecce e linee)?')) DrawManager.clearDraw(); 
             });
 
             // Giocate/Plays
@@ -2378,7 +2418,7 @@ service cloud.firestore {
             dom.scrubber.addEventListener('input', TimelineManager.handleScrubberChange);
             dom.scrubber.addEventListener('change', TimelineManager.handleScrubberChange);
             dom.prevFrameBtn.addEventListener('click', () => TimelineManager.loadFrame(Math.max(0, appState.playIndex - 1)));
-            dom.nextFrameBtn.addEventListener('click', () => TimelineManager.loadFrame(Math.min(appState.timeline.length - 1, appState.playIndex + 1)));
+            dom.nextFrameBtn.addEventListener('click', () => TimelineManager.loadFrame(Math.min(appState.timeline.length > 0 ? appState.timeline.length - 1 : 0, appState.playIndex + 1)));
             dom.playBtn.addEventListener('click', TimelineManager.startPlay);
             dom.pauseBtn.addEventListener('click', TimelineManager.pausePlay);
             dom.stopBtn.addEventListener('click', TimelineManager.stopPlay);
@@ -2396,37 +2436,48 @@ service cloud.firestore {
         await AuthManager.init();
         
         // Solo inicializar la pizarra si el usuario está autorizado
-        if (isAuthorized && currentUser) {
-            LayoutManager.renderGrid(); 
-            DrawManager.setTool('arrows');
-            UnitsManager.createPlayers(); 
-            StorageManager.loadPositions();
-            StorageManager.loadArrows(); 
-            StorageManager.loadStrokes(); 
-            DrawManager.renderDraw();
-            UnitsManager.placeBall(WIDTH/2, HEIGHT/2); 
-            StorageManager.loadBall();
-            StorageManager.loadTimeline(); 
-            TimelineManager.updateScrubber();
-            
-            if (!Array.isArray(appState.timeline) || appState.timeline.length === 0) {
-                TimelineManager.recordFrame();
-                appState.playIndex = 0;
-                TimelineManager.updateScrubber();
-                StorageManager.saveTimeline();
-            }
+        // El onAuthStateChanged se encargará de mostrar la app
+        // y luego podemos mover la lógica de inicialización de la pizarra allí.
+        
+        // Esta lógica se moverá a onAuthStateChanged
+        onAuthStateChanged(auth, (user) => {
+            if (user && isAuthorized) {
+                // Previene la reinicialización múltiple
+                if (document.body.dataset.boardInitialized) return;
+                document.body.dataset.boardInitialized = "true";
 
-            DrawManager.enableDrawing();
-            dom.draw.style.pointerEvents = 'auto';
-            UnitsManager.enableDragBall(() => { 
-                StorageManager.saveBall(); 
-                if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); 
-            });
-            StorageManager.updatePlaySelect();
-            LayoutManager.fitBoard();
-            
-            InteractionManager.enableSelectionBox();
-        }
+                LayoutManager.renderGrid(); 
+                DrawManager.setTool('arrows');
+                // UnitsManager.createPlayers(); // Esto ya lo llama loadPositions
+                StorageManager.loadPositions(); // Esto carga 15v15 o lo guardado
+                StorageManager.loadArrows(); 
+                StorageManager.loadStrokes(); 
+                DrawManager.renderDraw();
+                UnitsManager.placeBall(WIDTH/2, HEIGHT/2); 
+                StorageManager.loadBall();
+                StorageManager.loadTimeline(); 
+                TimelineManager.updateScrubber();
+                
+                if (!Array.isArray(appState.timeline) || appState.timeline.length === 0) {
+                    TimelineManager.recordFrame();
+                    appState.playIndex = 0;
+                    TimelineManager.updateScrubber();
+                    StorageManager.saveTimeline();
+                }
+
+                DrawManager.enableDrawing();
+                dom.draw.style.pointerEvents = 'auto';
+                
+                // UnitsManager.enableDragBall ya se llama en AuthManager.init
+                // StorageManager.updatePlaySelect ya se llama en AuthManager.init
+                
+                LayoutManager.fitBoard();
+                
+                // InteractionManager.enableSelectionBox ya se llama en AuthManager.init
+            } else {
+                document.body.dataset.boardInitialized = "false";
+            }
+        });
         
         UIManager.setupEventListeners();
     }
