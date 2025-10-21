@@ -1767,6 +1767,7 @@ service cloud.firestore {
                         if (docSnap.exists()) {
                             playData = docSnap.data();
                             console.log("✅ Giocata caricata da Firebase");
+                            alert("✅ Giocata caricata da Firebase");
                         } else {
                             // Fallback to localStorage
                             const rawData = localStorage.getItem(PLAY_PREFIX + name);
