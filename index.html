@@ -6,6 +6,7 @@
   <title>Lavagna di Rugby — Animazione + Export JPG/WebM/MP4 + Campo Vertical</title>
   <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.min.js"></script>
   <style>
+    /* Todos tus estilos CSS se mantienen igual */
     :root {
       --sidebar-w: 360px;
       --player-size: 40px;
@@ -216,6 +217,27 @@
       opacity: 0.8;
     }
 
+    /* Nuevos estilos para notificaciones */
+    .firebase-status {
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-top: 8px;
+      display: none;
+    }
+    .firebase-status.connected {
+      background: rgba(126, 242, 154, 0.1);
+      border: 1px solid var(--accent2);
+      color: var(--accent2);
+      display: block;
+    }
+    .firebase-status.disconnected {
+      background: rgba(230, 57, 70, 0.1);
+      border: 1px solid var(--red);
+      color: var(--red);
+      display: block;
+    }
+
     @media (max-width: 900px) {
       :root { --sidebar-w: min(86vw, 420px); }
       html, body { overflow: hidden; height: 100dvh; }
@@ -290,9 +312,16 @@
             <span id="statusText">Conectando...</span>
           </div>
         </div>
+        
+        <!-- Estado de Firebase -->
+        <div id="firebaseStatus" class="firebase-status disconnected">
+          ⚠️ Configura le regole di sicurezza in Firebase Console
+        </div>
+        
         <button class="btn primary" id="btnAuthAction">Esci</button>
       </div>
 
+      <!-- Resto de tu interfaz se mantiene igual -->
       <div class="group">
         <strong>Controlli</strong>
         <div class="row" style="grid-template-columns: 1fr;">
@@ -306,7 +335,6 @@
           <input type="checkbox" id="verticalField"> Campo vertical
         </label>
         
-        <!-- Nuevo: Contador de jugadores y botón para agregar -->
         <div class="player-counter">
           <span>Jugadores: <span id="playerCount">0</span>/15</span>
           <button class="btn alt" id="addPlayerBtn" style="margin-left: auto;">+ Aggiungi Giocatore</button>
@@ -422,6 +450,7 @@
             <svg class="grid-overlay" id="grid" viewBox="0 0 1200 700" preserveAspectRatio="none"></svg>
 
             <svg class="lines" viewBox="0 0 1200 700" preserveAspectRatio="none" aria-hidden="true">
+              <!-- Tus líneas del campo de rugby -->
               <rect x="5" y="5" width="1190" height="690" fill="none" stroke="#fff" stroke-width="6" />
               <rect x="0" y="0" width="80" height="700" fill="rgba(255,255,255,.07)" />
               <rect x="1120" y="0" width="80" height="700" fill="rgba(255,255,255,.07)" />
@@ -457,14 +486,15 @@
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, deleteDoc, collection, query, onSnapshot, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // --- CONFIGURACIÓN FIREBASE ---
+    // --- CONFIGURACIÓN FIREBASE ACTUALIZADA ---
     const firebaseConfig = {
-      apiKey: "AIzaSyDCIY11FyQxKZY3hwBGNWixtaK_SFZko6k",
-      authDomain: "rugbycoach-f0b23.firebaseapp.com",
-      projectId: "rugbycoach-f0b23",
-      storageBucket: "rugbycoach-f0b23.firebasestorage.app",
-      messagingSenderId: "536069158649",
-      appId: "1:536069158649:web:ead82ceea04f5d7ab39428",
+      apiKey: "AIzaSyACU3QfuTpW6PNRt3hHl9m1dy4Vso0GPoI",
+      authDomain: "bologna-rugby-club.firebaseapp.com",
+      projectId: "bologna-rugby-club",
+      storageBucket: "bologna-rugby-club.firebasestorage.app",
+      messagingSenderId: "641438144435",
+      appId: "1:641438144435:web:e2a243bacd522fd1615dc6",
+      measurementId: "G-9C66KXJ561"
     };
 
     const AUTHORIZED_USERS_IDS = ['YZyCoUgkMsOtP7gmWe1qdlWmaug1', '9VvUXzzbtjXsQtt6cswccxfXHTr2'];
@@ -473,6 +503,7 @@
     let app, db = null, auth;
     let isAuthorized = false;
     let currentUser = null;
+    let firebaseConnected = false;
 
     // --- CONSTANTES GLOBALES ---
     const WIDTH = 1200, HEIGHT = 700;
@@ -504,7 +535,6 @@
         fromFrame: null,
         toFrame: null,
         selectedPlayers: new Set(),
-        // Nuevo estado para contar jugadores
         playerCounter: { blue: 0, red: 0 }
     };
 
@@ -571,9 +601,9 @@
         exportVideoBtn: document.getElementById('exportVideoBtn'),
         exportMp4Btn: document.getElementById('exportMp4Btn'),
         ffmpegStatus: document.getElementById('ffmpegStatus'),
-        // Nuevas referencias para el contador de jugadores
         playerCount: document.getElementById('playerCount'),
-        addPlayerBtn: document.getElementById('addPlayerBtn')
+        addPlayerBtn: document.getElementById('addPlayerBtn'),
+        firebaseStatus: document.getElementById('firebaseStatus')
     };
 
     // --- SISTEMA DE AUTENTICACIÓN MEJORADO ---
@@ -583,6 +613,9 @@
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
+                
+                // Test Firebase connection
+                await AuthManager.testFirebaseConnection();
                 
                 onAuthStateChanged(auth, (user) => {
                     currentUser = user;
@@ -594,7 +627,6 @@
                             AuthManager.showStatus(`¡Bienvenido ${user.email}! Modo Entrenador`, 'success');
                             InteractionManager.enableSelectionBox();
                             InteractionManager.reinitializePlayerInteractions();
-                            // Habilitar arrastre de pelota después de login
                             UnitsManager.enableDragBall(() => { 
                                 StorageManager.saveBall(); 
                                 if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); 
@@ -618,20 +650,63 @@
                 console.error("Firebase falló:", error);
                 AuthManager.showLogin();
                 AuthManager.showStatus('Error de conexión. Intenta más tarde.', 'error');
+                AuthManager.updateFirebaseStatus(false);
+            }
+        },
+
+        async testFirebaseConnection() {
+            try {
+                // Intentar una operación simple para verificar permisos
+                const testDoc = doc(db, "plays", "test-connection");
+                await setDoc(testDoc, { test: true, timestamp: new Date() });
+                await deleteDoc(testDoc);
+                firebaseConnected = true;
+                AuthManager.updateFirebaseStatus(true);
+                console.log("✅ Firebase conectado correctamente");
+            } catch (error) {
+                console.warn("❌ Firebase permissions issue:", error);
+                firebaseConnected = false;
+                AuthManager.updateFirebaseStatus(false);
+                
+                if (error.code === 'permission-denied') {
+                    console.error("🔴 CONFIGURA LAS REGLAS DE FIREBASE:");
+                    console.error("Ve a Firebase Console > Firestore > Rules");
+                    console.error("Y configura estas reglas:");
+                    console.error(`
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /plays/{playId} {
+      allow read, write: if request.auth != null 
+        && request.auth.uid in ['YZyCoUgkMsOtP7gmWe1qdlWmaug1', '9VvUXzzbtjXsQtt6cswccxfXHTr2'];
+    }
+  }
+}
+                    `);
+                }
+            }
+        },
+
+        updateFirebaseStatus(connected) {
+            firebaseConnected = connected;
+            if (connected) {
+                dom.firebaseStatus.textContent = '✅ Firebase: Connesso e funzionante';
+                dom.firebaseStatus.className = 'firebase-status connected';
+            } else {
+                dom.firebaseStatus.innerHTML = '⚠️ <strong>Configura le regole di sicurezza in Firebase Console</strong><br>Vai a: Firebase Console > Firestore Database > Rules';
+                dom.firebaseStatus.className = 'firebase-status disconnected';
             }
         },
 
         showLogin() {
             dom.loginOverlay.style.display = 'flex';
             dom.mainApp.style.display = 'none';
-            // Ocultar hamburguesa en login
             dom.menuBtn.style.display = 'none';
         },
 
         showApp() {
             dom.loginOverlay.style.display = 'none';
             dom.mainApp.style.display = 'grid';
-            // Mostrar hamburguesa solo en móvil cuando la app está visible
             if (window.innerWidth <= 900) {
                 dom.menuBtn.style.display = 'grid';
             }
@@ -720,7 +795,7 @@
         }
     };
 
-    // --- UTILIDADES ---
+    // --- UTILIDADES (se mantienen igual) ---
     function dist(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return Math.hypot(dx, dy); }
     function centerOf(el) { return { x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0 }; }
     function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
@@ -731,11 +806,8 @@
         return dist(b.x, b.y, p.x, p.y) < threshold;
     }
     function snap(val) { return Math.round(val / GRID_SIZE) * GRID_SIZE; }
-    function rectIntersect(a, b) {
-        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-    }
 
-    // --- GESTIÓN DE LAYOUT Y COORDENADAS ---
+    // --- GESTIÓN DE LAYOUT Y COORDENADAS (se mantiene igual) ---
     const LayoutManager = {
         isPortraitLike() {
             if (appState.layout.forceVertical) return true;
@@ -840,7 +912,7 @@
         }
     };
 
-    // --- GESTIÓN DE JUGADORES Y BALÓN ---
+    // --- GESTIÓN DE JUGADORES Y BALÓN (se mantiene igual) ---
     const UnitsManager = {
         initialPositions: (function () {
             const positions = [];
@@ -849,7 +921,6 @@
             return positions;
         })(),
         
-        // Nuevo método para contar jugadores actuales
         countPlayers() {
             const players = [...dom.playersLayer.children];
             const blueCount = players.filter(p => p.dataset.team === 'blue').length;
@@ -859,14 +930,12 @@
             const total = blueCount + redCount;
             dom.playerCount.textContent = total;
             
-            // Deshabilitar botón si se alcanza el máximo
             dom.addPlayerBtn.disabled = total >= 15;
             dom.addPlayerBtn.textContent = total >= 15 ? 'Massimo 15 giocatori' : '+ Aggiungi Giocatore';
             
             return { blue: blueCount, red: redCount, total };
         },
         
-        // Nuevo método para agregar jugador
         addPlayer() {
             const counts = this.countPlayers();
             if (counts.total >= 15) {
@@ -874,18 +943,14 @@
                 return null;
             }
             
-            // Determinar equipo (el que tenga menos jugadores)
             const team = counts.blue <= counts.red ? 'blue' : 'red';
             const newNumber = counts[team] + 1;
-            
-            // Posición inicial basada en el equipo
             const x = team === 'blue' ? WIDTH * 0.18 : WIDTH * 0.82;
-            const y = HEIGHT * 0.5; // Centro del campo
+            const y = HEIGHT * 0.5;
             
             const playerEl = this.createPlayerElement(team, newNumber, x, y);
             dom.playersLayer.appendChild(playerEl);
             
-            // Actualizar contador
             this.countPlayers();
             StorageManager.savePositions();
             
@@ -1126,7 +1191,7 @@
         }
     };
 
-    // --- GESTIÓN DE INTERACCIONES ---
+    // --- GESTIÓN DE INTERACCIONES (se mantiene igual) ---
     const InteractionManager = {
         enableSelectionBox() {
             if (!isAuthorized) return;
@@ -1135,7 +1200,6 @@
             let selectionStart = null;
 
             dom.board.addEventListener('pointerdown', (e) => {
-                // PERMITIR SELECCIÓN INCLUSO CUANDO LAS HERRAMIENTAS DE DIBUJO ESTÁN ACTIVAS
                 if (e.target.closest('.player') || e.target.closest('#ball') || 
                     appState.drawingArrow || appState.drawingStroke) return;
 
@@ -1216,7 +1280,7 @@
         }
     };
 
-    // --- GESTIÓN DE DIBUJO ---
+    // --- GESTIÓN DE DIBUJO (se mantiene igual) ---
     const DrawManager = {
         clearDraw() {
             if (!isAuthorized) return;
@@ -1308,10 +1372,7 @@
             UnitsManager.clearPassPreview();
         },
         enableDrawing() {
-            // Solo habilitar el dibujo cuando se hace clic específicamente para dibujar
-            // No capturar todos los eventos del pointerdown
             dom.draw.addEventListener('pointerdown', (e) => {
-                // Solo procesar si es un clic directo en el área de dibujo y no hay selección activa
                 if (appState.tool === 'arrows' || appState.tool === 'pen') {
                     DrawManager.onPointerDown(e);
                 }
@@ -1323,12 +1384,9 @@
             if (!isAuthorized) return;
             if (e.button !== 0) return;
             
-            // NUEVA CONDICIÓN: Si estamos en modo flechas o lápiz pero queremos seleccionar jugadores
-            // Permitir la selección en lugar del dibujo cuando se hace clic en áreas vacías
             if ((appState.tool === 'arrows' || appState.tool === 'pen') && 
                 !e.target.closest('.player') && 
                 !e.target.closest('#ball')) {
-                // Permitir que el evento continúe para la selección de jugadores
                 return;
             }
             
@@ -1456,7 +1514,7 @@
         }
     };
 
-    // --- GESTIÓN DE ANIMACIÓN ---
+    // --- GESTIÓN DE ANIMACIÓN (se mantiene igual) ---
     const TimelineManager = {
         recordFrame() {
             if (!isAuthorized) return;
@@ -1648,7 +1706,7 @@
         }
     };
 
-    // --- GESTIÓN DE ALMACENAMIENTO ---
+    // --- GESTIÓN DE ALMACENAMIENTO MEJORADA ---
     const StorageManager = {
         async savePlay() {
             if (!isAuthorized) return;
@@ -1668,20 +1726,31 @@
             };
 
             try {
-                if (db) {
+                // Guardar en Firebase
+                if (db && firebaseConnected) {
                     await setDoc(doc(db, "plays", name), playData);
-                    AuthManager.showStatus(`Giocata "${name}" salvata en Firebase`, 'success');
+                    AuthManager.showStatus(`✅ Giocata "${name}" salvata en Firebase`, 'success');
                 } else {
-                    localStorage.setItem(PLAY_PREFIX + name, JSON.stringify(playData));
-                    AuthManager.showStatus(`Giocata "${name}" salvata localmente`, 'success');
+                    throw new Error('Firebase no disponible');
                 }
+                
+                // También guardar en localStorage como respaldo
+                localStorage.setItem(PLAY_PREFIX + name, JSON.stringify(playData));
+                
                 StorageManager.updatePlaySelect();
             } catch (e) {
                 console.error('Error saving play:', e);
                 if (e.code === 'permission-denied') {
-                    alert('Permessi insufficienti per salvare su Firebase. Controlla le regole di sicurezza.');
+                    alert('❌ Permessi insufficienti per salvare su Firebase. Controlla le regole di sicurezza in Firebase Console.');
+                    // Fallback to localStorage
+                    localStorage.setItem(PLAY_PREFIX + name, JSON.stringify(playData));
+                    AuthManager.showStatus(`⚠️ Giocata "${name}" salvata localmente (fallback)`, 'success');
+                    StorageManager.updatePlaySelect();
                 } else {
-                    alert('Errore nel salvataggio.');
+                    // Fallback to localStorage para otros errores
+                    localStorage.setItem(PLAY_PREFIX + name, JSON.stringify(playData));
+                    AuthManager.showStatus(`⚠️ Giocata "${name}" salvata localmente (fallback)`, 'success');
+                    StorageManager.updatePlaySelect();
                 }
             }
         },
@@ -1690,18 +1759,42 @@
             try {
                 let playData;
                 
-                if (db) {
-                    const docSnap = await getDoc(doc(db, "plays", name));
-                    if (docSnap.exists()) {
-                        playData = docSnap.data();
-                    } else {
-                        alert("Giocata non trovata en Firebase.");
-                        return;
+                // Primero intentar cargar desde Firebase
+                if (db && firebaseConnected) {
+                    try {
+                        const docSnap = await getDoc(doc(db, "plays", name));
+                        if (docSnap.exists()) {
+                            playData = docSnap.data();
+                            console.log("✅ Giocata caricata da Firebase");
+                        } else {
+                            // Fallback to localStorage
+                            const rawData = localStorage.getItem(PLAY_PREFIX + name);
+                            if (!rawData) {
+                                alert("Giocata non trovata.");
+                                return;
+                            }
+                            playData = JSON.parse(rawData);
+                            console.log("⚠️ Giocata caricata da localStorage (fallback)");
+                        }
+                    } catch (firebaseError) {
+                        console.warn('Firebase error, falling back to localStorage:', firebaseError);
+                        const rawData = localStorage.getItem(PLAY_PREFIX + name);
+                        if (!rawData) {
+                            alert("Giocata non trovata.");
+                            return;
+                        }
+                        playData = JSON.parse(rawData);
+                        console.log("⚠️ Giocata caricata da localStorage (fallback)");
                     }
                 } else {
+                    // Solo localStorage
                     const rawData = localStorage.getItem(PLAY_PREFIX + name);
-                    if (!rawData) return;
+                    if (!rawData) {
+                        alert("Giocata non trovata.");
+                        return;
+                    }
                     playData = JSON.parse(rawData);
+                    console.log("ℹ️ Giocata caricata da localStorage");
                 }
 
                 appState.timeline = playData.timeline || [];
@@ -1736,14 +1829,10 @@
                 StorageManager.saveBall();
                 LayoutManager.applyUprightTransforms();
                 
-                AuthManager.showStatus(`Giocata "${name}" caricata`, 'success');
+                AuthManager.showStatus(`✅ Giocata "${name}" caricata`, 'success');
             } catch (error) {
                 console.error('Error loading play:', error);
-                if (error.code === 'permission-denied') {
-                    alert('Permessi insufficienti per caricare da Firebase. Controlla le regole di sicurezza.');
-                } else {
-                    alert('Errore nel caricamento della giocata.');
-                }
+                alert('Errore nel caricamento della giocata.');
             }
         },
 
@@ -1752,21 +1841,22 @@
             const name = dom.loadPlaySel.value;
             if (name && confirm(`¿Estás seguro de que quieres eliminar la giocata "${name}"?`)) {
                 try {
-                    if (db) {
+                    // Eliminar de Firebase
+                    if (db && firebaseConnected) {
                         await deleteDoc(doc(db, "plays", name));
-                    } else {
-                        localStorage.removeItem(PLAY_PREFIX + name);
                     }
+                    // Siempre eliminar de localStorage también
+                    localStorage.removeItem(PLAY_PREFIX + name);
                     StorageManager.updatePlaySelect();
                     dom.playNameInput.value = '';
-                    AuthManager.showStatus(`Giocata "${name}" eliminata`, 'success');
+                    AuthManager.showStatus(`✅ Giocata "${name}" eliminata`, 'success');
                 } catch (error) {
                     console.error('Error deleting play:', error);
-                    if (error.code === 'permission-denied') {
-                        alert('Permessi insufficienti per eliminare da Firebase. Controlla le regole di sicurezza.');
-                    } else {
-                        alert('Errore nell\'eliminazione della giocata.');
-                    }
+                    // Intentar solo con localStorage si Firebase falla
+                    localStorage.removeItem(PLAY_PREFIX + name);
+                    StorageManager.updatePlaySelect();
+                    dom.playNameInput.value = '';
+                    AuthManager.showStatus(`⚠️ Giocata "${name}" eliminata localmente`, 'success');
                 }
             }
         },
@@ -1777,29 +1867,29 @@
             try {
                 let plays = [];
                 
-                if (db && currentUser && isAuthorized) {
+                // Primero cargar desde localStorage (siempre disponible)
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith(PLAY_PREFIX)) {
+                        plays.push(key.substring(PLAY_PREFIX.length));
+                    }
+                }
+                
+                // Luego intentar cargar desde Firebase si está disponible
+                if (db && firebaseConnected && currentUser && isAuthorized) {
                     try {
                         const q = query(collection(db, "plays"));
                         const querySnapshot = await getDocs(q);
                         querySnapshot.forEach((doc) => {
-                            plays.push(doc.id);
-                        });
-                    } catch (error) {
-                        console.warn('Error loading plays from Firebase, falling back to localStorage:', error);
-                        // Fallback to localStorage
-                        for (let i = 0; i < localStorage.length; i++) {
-                            const key = localStorage.key(i);
-                            if (key.startsWith(PLAY_PREFIX)) {
-                                plays.push(key.substring(PLAY_PREFIX.length));
+                            const playName = doc.id;
+                            if (!plays.includes(playName)) {
+                                plays.push(playName);
                             }
-                        }
-                    }
-                } else {
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (key.startsWith(PLAY_PREFIX)) {
-                            plays.push(key.substring(PLAY_PREFIX.length));
-                        }
+                        });
+                        console.log("✅ Playlist aggiornata da Firebase");
+                    } catch (firebaseError) {
+                        console.warn('Error loading plays from Firebase, using localStorage only:', firebaseError);
+                        // Continuar con los datos de localStorage
                     }
                 }
                 
@@ -1811,7 +1901,7 @@
                 });
             } catch (error) {
                 console.error('Error updating play select:', error);
-                // Fallback to localStorage on error
+                // Fallback completo a localStorage
                 dom.loadPlaySel.innerHTML = '<option value="">-- Carica giocata salvata --</option>';
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
@@ -1943,7 +2033,7 @@
         },
     };
 
-    // --- EXPORTACIÓN ---
+    // --- EXPORTACIÓN (se mantiene igual) ---
     const ExportManager = {
         drawPitch(ctx) {
             ctx.clearRect(0, 0, WIDTH, HEIGHT);
@@ -2191,7 +2281,7 @@
         },
     };
 
-    // --- UI/EVENT HANDLERS ---
+    // --- UI/EVENT HANDLERS (se mantiene igual) ---
     const UIManager = {
         setupEventListeners() {
             // Auth
@@ -2204,7 +2294,6 @@
             // Layout
             window.addEventListener('resize', () => {
                 LayoutManager.fitBoard();
-                // Actualizar visibilidad del menú hamburguesa en resize
                 if (window.innerWidth <= 900 && dom.mainApp.style.display !== 'none') {
                     dom.menuBtn.style.display = 'grid';
                 } else {
@@ -2216,7 +2305,7 @@
                 LayoutManager.fitBoard();
             });
 
-            // Menu/Sidebar - Funcionalidad del menú hamburguesa
+            // Menu/Sidebar
             dom.menuBtn.addEventListener('click', () => { 
                 dom.sidebar.classList.add('open'); 
                 dom.scrim.classList.add('show'); 
