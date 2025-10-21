@@ -936,7 +936,7 @@ service cloud.firestore {
             dom.playerCount.textContent = total;
             
             dom.addPlayerBtn.disabled = total >= 30;
-            dom.addPlayerBtn.textContent = total >= 30 ? 'Massimo 15 giocatori' : '+ Aggiungi Giocatore';
+            dom.addPlayerBtn.textContent = total >= 30 ? 'Massimo 30 giocatori' : '+ Aggiungi Giocatore';
             
             return { blue: blueCount, red: redCount, total };
         },
@@ -944,7 +944,7 @@ service cloud.firestore {
         addPlayer() {
             const counts = this.countPlayers();
             if (counts.total >= 30) {
-                alert('Massimo 15 giocatori raggiunto!');
+                alert('Massimo 30 giocatori raggiunto!');
                 return null;
             }
             
