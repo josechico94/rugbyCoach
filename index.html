@@ -498,7 +498,7 @@
       measurementId: "G-9C66KXJ561"
     };
 
-    const AUTHORIZED_USERS_IDS = ['DFIT1r7ehKSkN5eB0ASZBOHp79B2', 'vXyrct9WJhhor5jztQ2IZea0BXl2'];
+    const AUTHORIZED_USERS_IDS = ['DFIT1r7ehKSkN5eB0ASZBOHp79B2', 'HlAYO8J5vuaKZkJa9f4rp5sHTOH2'];
     
     // Variables globales Firebase
     let app, db = null, auth;
@@ -679,7 +679,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /plays/{playId} {
       allow read, write: if request.auth != null 
-        && request.auth.uid in ['DFIT1r7ehKSkN5eB0ASZBOHp79B2', 'vXyrct9WJhhor5jztQ2IZea0BXl2'];
+        && request.auth.uid in ['DFIT1r7ehKSkN5eB0ASZBOHp79B2', 'HlAYO8J5vuaKZkJa9f4rp5sHTOH2'];
     }
   }
 }
