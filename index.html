@@ -263,6 +263,12 @@
       transform: translateX(400px);
     }
 
+    /* Nueva herramienta de selección */
+    .btn.selection-tool {
+      background: var(--blue);
+      border-color: var(--blue);
+    }
+
     @media (max-width: 900px) {
       :root { --sidebar-w: min(86vw, 420px); }
       html, body { overflow: hidden; height: 100dvh; }
@@ -377,10 +383,11 @@
       </div>
 
       <div class="group">
-        <strong>Disegno</strong>
-        <div class="row" style="grid-template-columns: 1fr 1fr;">
-          <button class="btn active" id="toolArrows">Frecce: Attivo</button>
-          <button class="btn alt" id="toolPen">Matita: Inattiva</button>
+        <strong>Strumenti</strong>
+        <div class="row" style="grid-template-columns: 1fr 1fr 1fr;">
+          <button class="btn selection-tool active" id="toolSelect">Selezione</button>
+          <button class="btn alt" id="toolArrows">Frecce</button>
+          <button class="btn alt" id="toolPen">Matita</button>
         </div>
         <div class="row" style="grid-template-columns: 1fr 1fr;">
           <label>Colore
@@ -555,7 +562,7 @@
     // --- ESTADO CENTRALIZADO (appState) ---
     let appState = {
         layout: { mode: 'landscape', scale: 1, tx: 0, ty: 0, forceVertical: false },
-        tool: 'arrows',
+        tool: 'select', // CAMBIO: Ahora la herramienta por defecto es selección
         arrows: [],
         strokes: [],
         drawingArrow: false,
@@ -605,6 +612,7 @@
         resetBtn: document.getElementById('reset'),
         snapToggle: document.getElementById('snapToggle'),
         verticalFieldChk: document.getElementById('verticalField'),
+        toolSelectBtn: document.getElementById('toolSelect'), // NUEVO: Botón de selección
         toolArrowsBtn: document.getElementById('toolArrows'),
         toolPenBtn: document.getElementById('toolPen'),
         undoGenericBtn: document.getElementById('undoGeneric'),
@@ -769,7 +777,7 @@
 
         setControlsEnabled(enabled) {
             const controls = [
-                dom.resetBtn, dom.toolArrowsBtn, dom.toolPenBtn, dom.undoGenericBtn,
+                dom.resetBtn, dom.toolSelectBtn, dom.toolArrowsBtn, dom.toolPenBtn, dom.undoGenericBtn,
                 dom.clearArrowsBtn, dom.clearAllBtn, dom.recordStepBtn, dom.savePlayBtn,
                 dom.duplicatePlayBtn, dom.deletePlayBtn, dom.btnLoadPlay, dom.addPlayerBtn
             ];
@@ -1050,6 +1058,9 @@
             let playerOffsets = [];
 
             const onDown = e => {
+                // Solo permitir arrastrar si estamos en modo selección
+                if (appState.tool !== 'select') return;
+                
                 pointerId = e.pointerId;
                 playerEl.setPointerCapture(pointerId);
                 e.preventDefault();
@@ -1058,7 +1069,10 @@
                 origT = parseFloat(playerEl.style.top) || 0;
 
                 if (!playerEl.classList.contains('selected')) {
-                    InteractionManager.clearSelection();
+                    // Si no está seleccionado y no estamos manteniendo Ctrl/Shift, limpiar selección
+                    if (!e.ctrlKey && !e.shiftKey) {
+                        InteractionManager.clearSelection();
+                    }
                     playerEl.classList.add('selected');
                     appState.selectedPlayers.add(playerEl);
                 }
@@ -1163,6 +1177,9 @@
             let passerEl = null;
 
             const onDown = e => {
+                // Solo permitir arrastrar balón si estamos en modo selección
+                if (appState.tool !== 'select') return;
+                
                 pointerId = e.pointerId;
                 dom.ball.setPointerCapture(pointerId);
                 e.preventDefault();
@@ -1248,7 +1265,7 @@
         }
     };
 
-    // --- GESTIÓN DE INTERACCIONES ---
+    // --- GESTIÓN DE INTERACCIONES CORREGIDA ---
     const InteractionManager = {
         enableSelectionBox() {
             if (!isAuthorized) return;
@@ -1257,6 +1274,9 @@
             let selectionStart = null;
 
             dom.board.addEventListener('pointerdown', (e) => {
+                // Solo permitir selección si estamos en modo selección
+                if (appState.tool !== 'select') return;
+                
                 if (e.target.closest('.player') || e.target.closest('#ball') || 
                     appState.drawingArrow || appState.drawingStroke) return;
 
@@ -1337,6 +1357,61 @@
         }
     };
 
+    // --- GESTIÓN DE HERRAMIENTAS CORREGIDA ---
+    const ToolManager = {
+        setTool(tool) {
+            if (!isAuthorized) return;
+            
+            appState.tool = tool;
+            
+            // Actualizar UI de botones
+            dom.toolSelectBtn.classList.remove('active', 'alt');
+            dom.toolArrowsBtn.classList.remove('active', 'alt');
+            dom.toolPenBtn.classList.remove('active', 'alt');
+            
+            if (tool === 'select') {
+                dom.toolSelectBtn.classList.add('active');
+                dom.toolArrowsBtn.classList.add('alt');
+                dom.toolPenBtn.classList.add('alt');
+                dom.toolSelectBtn.textContent = 'Selezione: Attivo';
+                dom.toolArrowsBtn.textContent = 'Frecce';
+                dom.toolPenBtn.textContent = 'Matita';
+                
+                // En modo selección, deshabilitar eventos de dibujo
+                dom.draw.style.pointerEvents = 'none';
+                
+            } else if (tool === 'arrows') {
+                dom.toolArrowsBtn.classList.add('active');
+                dom.toolSelectBtn.classList.add('alt');
+                dom.toolPenBtn.classList.add('alt');
+                dom.toolArrowsBtn.textContent = 'Frecce: Attivo';
+                dom.toolSelectBtn.textContent = 'Selezione';
+                dom.toolPenBtn.textContent = 'Matita';
+                
+                // En modo flechas, habilitar eventos de dibujo
+                dom.draw.style.pointerEvents = 'auto';
+                
+            } else if (tool === 'pen') {
+                dom.toolPenBtn.classList.add('active');
+                dom.toolSelectBtn.classList.add('alt');
+                dom.toolArrowsBtn.classList.add('alt');
+                dom.toolPenBtn.textContent = 'Matita: Attiva';
+                dom.toolSelectBtn.textContent = 'Selezione';
+                dom.toolArrowsBtn.textContent = 'Frecce';
+                
+                // En modo lápiz, habilitar eventos de dibujo
+                dom.draw.style.pointerEvents = 'auto';
+            }
+            
+            // Limpiar selección cuando cambiamos de herramienta
+            if (tool !== 'select') {
+                InteractionManager.clearSelection();
+            }
+            
+            console.log(`🛠️ Herramienta cambiada a: ${tool}`);
+        }
+    };
+
     // --- GESTIÓN DE DIBUJO CORREGIDA ---
     const DrawManager = {
         clearDraw() {
@@ -1358,25 +1433,6 @@
             appState.strokes = [];
             DrawManager.renderDraw();
             StorageManager.saveStrokes();
-        },
-        setTool(tool) {
-            if (!isAuthorized) return;
-            appState.tool = tool;
-            dom.toolArrowsBtn.classList.remove('active', 'alt');
-            dom.toolPenBtn.classList.remove('active', 'alt');
-            if (tool === 'arrows') {
-                dom.toolArrowsBtn.classList.add('active');
-                dom.toolPenBtn.classList.add('alt');
-                dom.toolArrowsBtn.textContent = 'Frecce: Attivo';
-                dom.toolPenBtn.textContent = 'Matita: Inattiva';
-            } else {
-                dom.toolPenBtn.classList.add('active');
-                dom.toolArrowsBtn.classList.add('alt');
-                dom.toolPenBtn.textContent = 'Matita: Attiva';
-                dom.toolArrowsBtn.textContent = 'Frecce: Inattive';
-            }
-            // IMPORTANTE: Habilitar eventos de puntero en el área de dibujo
-            dom.draw.style.pointerEvents = 'auto';
         },
         undoLast() {
             if (!isAuthorized) return;
@@ -1429,16 +1485,17 @@
             UnitsManager.clearPassPreview();
         },
         enableDrawing() {
-            // IMPORTANTE: Configurar event listeners para dibujo
+            // Configurar event listeners para dibujo
             dom.draw.addEventListener('pointerdown', DrawManager.onPointerDown, { passive: false });
             dom.draw.addEventListener('pointerup', DrawManager.onPointerUp, { passive: false });
             dom.draw.addEventListener('pointerleave', DrawManager.onPointerUp, { passive: false });
         },
         onPointerDown(e) {
+            // Solo permitir dibujar si estamos en modo flechas o lápiz
+            if (appState.tool !== 'arrows' && appState.tool !== 'pen') return;
             if (!isAuthorized) return;
             if (e.button !== 0) return; // Solo botón izquierdo
             
-            // Permitir dibujar incluso si se hace clic en jugadores o balón
             e.preventDefault();
             e.stopPropagation();
             
@@ -2450,9 +2507,12 @@
                 [...dom.playersLayer.children].forEach(el => el.style.fontSize = e.target.classList.contains('active') ? 'var(--player-font)' : '0');
             });
 
-            // Dibujo - CORREGIDO
-            dom.toolArrowsBtn.addEventListener('click', () => DrawManager.setTool('arrows'));
-            dom.toolPenBtn.addEventListener('click', () => DrawManager.setTool('pen'));
+            // Herramientas - CORREGIDO
+            dom.toolSelectBtn.addEventListener('click', () => ToolManager.setTool('select'));
+            dom.toolArrowsBtn.addEventListener('click', () => ToolManager.setTool('arrows'));
+            dom.toolPenBtn.addEventListener('click', () => ToolManager.setTool('pen'));
+            
+            // Dibujo
             dom.undoGenericBtn.addEventListener('click', DrawManager.undoLast);
             dom.clearArrowsBtn.addEventListener('click', DrawManager.clearArrows);
             dom.clearAllBtn.addEventListener('click', () => { 
@@ -2505,7 +2565,7 @@
                 console.log('🎯 Inicializando pizarra...');
                 
                 LayoutManager.renderGrid(); 
-                DrawManager.setTool('arrows');
+                ToolManager.setTool('select'); // CAMBIO: Ahora empieza en modo selección
                 UnitsManager.createPlayers(); 
                 StorageManager.loadPositions();
                 StorageManager.loadArrows(); 
@@ -2523,9 +2583,8 @@
                     StorageManager.saveTimeline();
                 }
 
-                // IMPORTANTE: Habilitar el dibujo
+                // Habilitar el dibujo
                 DrawManager.enableDrawing();
-                dom.draw.style.pointerEvents = 'auto';
                 
                 UnitsManager.enableDragBall(() => { 
                     StorageManager.saveBall(); 
