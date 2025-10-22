@@ -398,15 +398,27 @@
         } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 
         // Tu configuración de Firebase
-        const firebaseConfig = {
-            // Añade aquí tu configuración de Firebase
-            apiKey: "tu-api-key",
-            authDomain: "tu-proyecto.firebaseapp.com",
-            projectId: "tu-proyecto",
-            storageBucket: "tu-proyecto.appspot.com",
-            messagingSenderId: "tu-sender-id",
-            appId: "tu-app-id"
-        };
+       // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyACU3QfuTpW6PNRt3hHl9m1dy4Vso0GPoI",
+  authDomain: "bologna-rugby-club.firebaseapp.com",
+  projectId: "bologna-rugby-club",
+  storageBucket: "bologna-rugby-club.firebasestorage.app",
+  messagingSenderId: "641438144435",
+  appId: "1:641438144435:web:e2a243bacd522fd1615dc6",
+  measurementId: "G-9C66KXJ561"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
         // Inicializar Firebase
         const app = initializeApp(firebaseConfig);
