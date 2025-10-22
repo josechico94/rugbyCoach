@@ -654,47 +654,51 @@
     };
 
     // --- SISTEMA DE AUTENTICACIÓN MEJORADO ---
-    const AuthManager = {
-        async init() {
-            try {
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                
-                console.log('✅ Firebase inicializado correctamente');
-                
-                // Test Firebase connection
-                await AuthManager.testFirebaseConnection();
-                
-                onAuthStateChanged(auth, (user) => {
-                    currentUser = user;
-                    if (user) {
-                        isAuthorized = true; // Ahora cualquier usuario autenticado está autorizado
-                        AuthManager.showApp();
-                        AuthManager.updateUI(true);
-                        AuthManager.showStatus(`¡Bienvenido ${user.email}! Modo Entrenador`, 'success');
-                        InteractionManager.enableSelectionBox();
-                        InteractionManager.reinitializePlayerInteractions();
-                        UnitsManager.enableDragBall(() => { 
-                            StorageManager.saveBall(); 
-                            if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); 
-                        });
-                        // Cargar las jugadas del usuario
-                        StorageManager.updatePlaySelect();
-                    } else {
-                        isAuthorized = false;
-                        AuthManager.showLogin();
-                        AuthManager.updateUI(false);
-                    }
-                });
-                
-            } catch (error) {
-                console.error("Firebase falló:", error);
-                AuthManager.showLogin();
-                AuthManager.showStatus('Error de conexión. Intenta más tarde.', 'error');
-                AuthManager.updateFirebaseStatus(false);
+   const AuthManager = {
+    async testFirebaseConnection() {
+        try {
+            const user = auth.currentUser;
+            if (!user) {
+                console.log('🔴 No hay usuario para probar conexión');
+                return false;
             }
-        },
+
+            console.log('🔄 Probando conexión Firebase completa...');
+            
+            // Probar múltiples operaciones
+            const testQuery = query(collection(db, "users", user.uid, "plays"));
+            const querySnapshot = await getDocs(testQuery);
+            
+            console.log('✅ Conexión Firebase exitosa');
+            console.log('📊 Documentos accesibles:', querySnapshot.size);
+            
+            // Probar también lectura de un documento específico
+            if (querySnapshot.size > 0) {
+                const firstDoc = querySnapshot.docs[0];
+                console.log('📄 Primer documento:', firstDoc.id);
+                
+                // Probar lectura individual
+                const docRef = doc(db, "users", user.uid, "plays", firstDoc.id);
+                const docSnap = await getDoc(docRef);
+                console.log('✅ Lectura individual también funciona');
+            }
+            
+            firebaseConnected = true;
+            AuthManager.updateFirebaseStatus(true);
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Error en conexión Firebase:', error);
+            console.error('Código:', error.code);
+            console.error('Mensaje:', error.message);
+            
+            firebaseConnected = false;
+            AuthManager.updateFirebaseStatus(false, error);
+            
+            return false;
+        }
+    }
+};
 
         async testFirebaseConnection() {
             try {
@@ -1815,80 +1819,117 @@
     };
 
     // --- GESTIÓN DE ALMACENAMIENTO MEJORADA ---
-    const StorageManager = {
-        async savePlay() {
-            if (!isAuthorized || !currentUser) {
-                alert('🔴 Usuario no autenticado');
-                return;
-            }
+const StorageManager = {
+    async loadPlay(name) {
+        try {
+            let playData;
+            console.log('🔄 Cargando jugada:', name);
             
-            const name = dom.playNameInput.value?.trim();
-            if (!name) { 
-                alert('❌ Inserisci un nome per la giocata.'); 
-                return; 
-            }
+            // DEBUG: Verificar estado actual
+            console.log('🔍 Estado actual - Firebase conectado:', firebaseConnected);
+            console.log('🔍 Estado actual - DB disponible:', !!db);
+            console.log('🔍 Estado actual - Usuario:', currentUser?.email);
             
-            if (appState.timeline.length === 0) { 
-                alert('❌ Aggiungi almeno un frame all\'animazione per salvare la giocata.'); 
-                return; 
-            }
-            
-            const playData = {
-                name,
-                timeline: appState.timeline,
-                arrows: appState.arrows,
-                strokes: appState.strokes,
-                positions: [...dom.playersLayer.children].map(el => ({ 
-                    team: el.dataset.team, 
-                    number: +el.dataset.number, 
-                    x: parseFloat(el.style.left), 
-                    y: parseFloat(el.style.top) 
-                })),
-                ball: centerOf(dom.ball),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                createdBy: currentUser.uid,
-                email: currentUser.email
-            };
-
-            console.log('🔄 Intentando guardar jugada:', name);
-
-            try {
-                // Verificar que Firebase esté disponible
-                if (!db) {
-                    console.error('❌ Firebase DB no está disponible');
-                    throw new Error('Firebase no inicializado');
-                }
-
-                // Intentar guardar en Firebase
-                console.log('📤 Guardando en Firebase...');
-                const playRef = doc(db, "users", currentUser.uid, "plays", name);
-                await setDoc(playRef, playData);
-                
-                console.log('✅ Jugada guardada en Firebase correctamente');
-                PopupManager.showSuccess(`✅ Giocata "${name}" salvata correttamente!`);
-                
-            } catch (error) {
-                console.error('❌ Error guardando en Firebase:', error);
-                
-                // Fallback robusto a localStorage
+            // ESTRATEGIA MEJORADA: Intentar Firebase primero, si falla inmediatamente usar localStorage
+            if (db && currentUser) {
                 try {
-                    console.log('🔄 Intentando fallback a localStorage...');
-                    localStorage.setItem(PLAY_PREFIX + name, JSON.stringify(playData));
+                    console.log('📥 Intentando cargar desde Firebase...');
+                    console.log('📍 Ruta:', `users/${currentUser.uid}/plays/${name}`);
                     
-                    console.log('✅ Jugada guardada en localStorage (fallback)');
-                    PopupManager.showSuccess(`⚠️ Giocata "${name}" salvata localmente`);
+                    const docRef = doc(db, "users", currentUser.uid, "plays", name);
+                    const docSnap = await getDoc(docRef);
                     
-                } catch (localError) {
-                    console.error('❌ Error incluso en localStorage:', localError);
-                    alert('❌ Error grave: No se pudo guardar la jugada en ningún almacenamiento.');
+                    if (docSnap.exists()) {
+                        playData = docSnap.data();
+                        console.log('✅ Jugada cargada desde Firebase');
+                        
+                        // Actualizar localStorage como caché
+                        localStorage.setItem(PLAY_PREFIX + name, JSON.stringify(playData));
+                    } else {
+                        console.log('📭 Jugada no existe en Firebase, probando localStorage...');
+                        throw new Error('Documento no existe en Firebase');
+                    }
+                } catch (firebaseError) {
+                    console.warn('❌ Error específico de Firebase:', firebaseError);
+                    console.warn('Código de error:', firebaseError.code);
+                    console.warn('Mensaje:', firebaseError.message);
+                    
+                    // Si es error de permisos, actualizar estado
+                    if (firebaseError.code === 'permission-denied' || 
+                        firebaseError.code === 'permissions-denied') {
+                        console.error('🔐 ERROR DE PERMISOS - Actualiza las reglas de Firebase');
+                        firebaseConnected = false;
+                        AuthManager.updateFirebaseStatus(false, firebaseError);
+                    }
+                    
+                    // Continuar inmediatamente con localStorage
+                    console.log('🔄 Fallback a localStorage...');
+                    const rawData = localStorage.getItem(PLAY_PREFIX + name);
+                    if (!rawData) {
+                        alert("Giocata non trovata: " + name);
+                        return;
+                    }
+                    playData = JSON.parse(rawData);
+                    console.log('✅ Jugada cargada desde localStorage (fallback)');
+                }
+            } else {
+                // Firebase no disponible - usar localStorage directamente
+                console.log('📭 Firebase no configurado, cargando desde localStorage...');
+                const rawData = localStorage.getItem(PLAY_PREFIX + name);
+                if (!rawData) {
+                    alert("Giocata non trovata: " + name);
                     return;
                 }
+                playData = JSON.parse(rawData);
+                console.log('✅ Jugada cargada desde localStorage');
             }
 
-            // Actualizar la lista de jugadas
-            StorageManager.updatePlaySelect();
-        },
+            // PROCESAR LOS DATOS DE LA JUGADA
+            await this.processPlayData(playData, name);
+            
+        } catch (error) {
+            console.error('❌ Error crítico cargando jugada:', error);
+            alert('Errore nel caricamento della giocata: ' + error.message);
+        }
+    },
+
+    async processPlayData(playData, name) {
+        // Cargar los datos en la aplicación
+        appState.timeline = playData.timeline || [];
+        TimelineManager.updateScrubber();
+        
+        appState.arrows = playData.arrows || [];
+        appState.strokes = playData.strokes || [];
+        
+        if (appState.timeline.length > 0) {
+            TimelineManager.loadFrame(0);
+        } else if (playData.positions) {
+            const playersMap = new Map();
+            [...dom.playersLayer.children].forEach(el => playersMap.set(el.dataset.team + el.dataset.number, el));
+            playData.positions.forEach(p => {
+                const el = playersMap.get(p.team + p.number);
+                if (el) {
+                    el.style.left = p.x + 'px';
+                    el.style.top = p.y + 'px';
+                }
+            });
+            UnitsManager.placeBall(playData.ball.x, playData.ball.y);
+            DrawManager.renderDraw();
+        } else {
+            DrawManager.renderDraw();
+        }
+
+        dom.playNameInput.value = name;
+        StorageManager.saveTimeline();
+        StorageManager.saveArrows();
+        StorageManager.saveStrokes();
+        StorageManager.savePositions();
+        StorageManager.saveBall();
+        LayoutManager.applyUprightTransforms();
+        
+        PopupManager.showSuccess(`✅ Giocata "${name}" caricata correttamente!`);
+    }
+};
 
         async loadPlay(name) {
             try {
