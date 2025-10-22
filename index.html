@@ -2545,6 +2545,163 @@
             ExportManager.setupExportUI();
         }
     };
+    <div class="control-buttons">
+    <button id="syncAllBtn" class="btn btn-sync">🔄 Sincronizar Todas</button>
+    <button id="addPlayBtn" class="btn btn-add">➕ Nueva Jugada</button>
+    </div>
+    // Botones de control
+function addControlButtons() {
+    const toolbar = document.querySelector('.toolbar') || document.body;
+    
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'control-buttons';
+    buttonContainer.innerHTML = `
+        <button id="syncAllBtn" class="btn btn-sync">🔄 Sincronizar Todas</button>
+        <button id="addPlayBtn" class="btn btn-add">➕ Nueva Jugada</button>
+    `;
+    
+    toolbar.appendChild(buttonContainer);
+    
+    // Event listeners
+    document.getElementById('syncAllBtn').addEventListener('click', syncAllPlays);
+    document.getElementById('addPlayBtn').addEventListener('click', addNewPlay);
+}
+
+// Sincronizar todas las jugadas
+async function syncAllPlays() {
+    console.log('🔄 Sincronizando todas las jugadas...');
+    
+    if (!window.jugadas || window.jugadas.length === 0) {
+        console.log('❌ No hay jugadas para sincronizar');
+        return;
+    }
+    
+    let successCount = 0;
+    
+    for (const jugada of window.jugadas) {
+        try {
+            await guardarJugadaEnFirebase(jugada);
+            successCount++;
+            console.log(`✅ Guardada: ${jugada.nombre}`);
+        } catch (error) {
+            console.log(`❌ Error guardando ${jugada.nombre}:`, error);
+        }
+    }
+    
+    console.log(`✅ Sincronización completada: ${successCount}/${window.jugadas.length} jugadas`);
+    alert(`✅ Sincronizadas ${successCount} jugadas en Firebase`);
+}
+
+// Agregar nueva jugada
+function addNewPlay() {
+    const nuevaJugada = {
+        id: 'jugada_' + Date.now(),
+        nombre: 'Nueva Jugada ' + (window.jugadas ? window.jugadas.length + 1 : 1),
+        descripcion: 'Descripción de la jugada',
+        fechaCreacion: new Date().toISOString(),
+        elementos: []
+    };
+    
+    // Agregar a la lista local
+    if (!window.jugadas) window.jugadas = [];
+    window.jugadas.push(nuevaJugada);
+    
+    // Guardar en Firebase
+    guardarJugadaEnFirebase(nuevaJugada);
+    
+    // Actualizar UI
+    actualizarListaJugadas();
+    
+    console.log('✅ Nueva jugada creada:', nuevaJugada.nombre);
+}
+
+// Función mejorada para guardar en Firebase
+async function guardarJugadaEnFirebase(jugada) {
+    if (!firebase.apps.length || !window.db) {
+        console.log('❌ Firebase no disponible, guardando en localStorage');
+        guardarEnLocalStorage(jugada);
+        return;
+    }
+    
+    try {
+        await setDoc(doc(db, "jugadas", jugada.id), jugada);
+        console.log('✅ Jugada guardada en Firebase:', jugada.nombre);
+        return true;
+    } catch (error) {
+        console.error('❌ Error guardando en Firebase:', error);
+        guardarEnLocalStorage(jugada);
+        return false;
+    }
+}
+
+// Cargar todas las jugadas al autenticarse
+function cargarJugadasCompleto() {
+    console.log('🔄 Cargando jugadas completas...');
+    
+    // 1. Intentar desde Firebase primero
+    cargarJugadasDesdeFirebase().then(jugadasFirebase => {
+        if (jugadasFirebase && jugadasFirebase.length > 0) {
+            console.log('✅ Jugadas cargadas desde Firebase:', jugadasFirebase.length);
+            window.jugadas = jugadasFirebase;
+        } else {
+            // 2. Si Firebase está vacío, cargar desde localStorage
+            console.log('📭 Firebase vacío, cargando desde localStorage');
+            cargarDesdeLocalStorage();
+        }
+        
+        // 3. Habilitar herramientas
+        habilitarHerramientas();
+        actualizarListaJugadas();
+    });
+}
+
+// Habilitar todas las funcionalidades
+function habilitarHerramientas() {
+    console.log('🛠️ Habilitando todas las herramientas...');
+    
+    // Habilitar flechas
+    const flechasBtn = document.querySelector('[data-tool="arrows"]');
+    const lapizBtn = document.querySelector('[data-tool="pen"]');
+    
+    if (flechasBtn) flechasBtn.disabled = false;
+    if (lapizBtn) lapizBtn.disabled = false;
+    
+    // Agregar event listeners si no existen
+    if (flechasBtn && !flechasBtn.hasListener) {
+        flechasBtn.addEventListener('click', () => cambiarHerramienta('arrows'));
+        flechasBtn.hasListener = true;
+    }
+    
+    if (lapizBtn && !lapizBtn.hasListener) {
+        lapizBtn.addEventListener('click', () => cambiarHerramienta('pen'));
+        lapizBtn.hasListener = true;
+    }
+    
+    console.log('✅ Todas las herramientas habilitadas');
+}
+
+// Ejecutar cuando el usuario se autentique
+function onAuthStateChanged(user) {
+    if (user) {
+        console.log('✅ Usuario autenticado:', user.email);
+        
+        // Agregar botones de control
+        addControlButtons();
+        
+        // Cargar jugadas y habilitar herramientas
+        cargarJugadasCompleto();
+    }
+}
+
+// Inicializar
+document.addEventListener('DOMContentLoaded', function() {
+    // Llamar esta función cuando el usuario se autentique
+    setTimeout(() => {
+        if (firebase.auth().currentUser) {
+            onAuthStateChanged(firebase.auth().currentUser);
+        }
+    }, 1000);
+});
 
     // ===== INIT =====
     async function init(){
