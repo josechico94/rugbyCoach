@@ -61,15 +61,13 @@
         .grid-overlay { position:absolute; inset:0; pointer-events:none; opacity:.6; display:none; }
         .grid-overlay.active { display:block; }
 
-        /* CORRECCIÓN 1: Dejamos pointer-events: none en la capa draw por defecto para que las interacciones del board (selección) funcionen, y lo activamos con JS para dibujar. */
+        /* Dejamos pointer-events:none en la capa draw por defecto para que la selección funcione en el board. */
         .lines, #draw { position:absolute; inset:0; pointer-events:none; }
         svg { width:100%; height:100%; display:block; }
 
-        /* Mantenemos touch-action:none para un manejo fluido en dispositivos táctiles */
         body, #boardViewport, #boardWrap, #board, #players, #ball, #draw { touch-action:none; }
 
         #players { position:absolute; inset:0; z-index:3; pointer-events:none; }
-        /* Los jugadores individuales tienen pointer-events:auto; por defecto en la clase .player, lo cual es correcto. */
         .player { pointer-events:auto; position:absolute; width:40px; height:40px; border-radius:50%; display:grid; place-items:center; font-weight:700; font-size:14px; color:#fff; cursor:grab; border:2px solid #fff; box-shadow: var(--shadow); }
         .player.selected { border: 3px solid var(--accent); box-shadow: 0 0 10px var(--accent); }
         .player:active, #ball:active { cursor: grabbing !important; }
@@ -1046,7 +1044,7 @@
                 let offX = 0, offY = 0;
                 let isGroupMove = false;
                 let playerOffsets = [];
-                let isDragging = false; // Flag para determinar si hubo arrastre significativo
+                let isDragging = false; 
 
                 const onDown = e => {
                     if (appState.tool !== 'select') return;
@@ -1122,7 +1120,7 @@
                         document.removeEventListener('pointermove', onMove);
                         document.removeEventListener('pointerup', onUp);
 
-                        if (isDragging) { // Solo guarda si hubo un arrastre significativo
+                        if (isDragging) { 
                             if (dom.snapToggle.checked) {
                                 const finalizePosition = (el) => {
                                     const px = snap(parseFloat(el.style.left));
@@ -1154,7 +1152,6 @@
                             }
                             (onDrop || (() => { }))(isGroupMove);
                         } else {
-                            // Manejar un clic simple para deselección si no es CTRL/Shift
                             if (!e.ctrlKey && !e.shiftKey && appState.selectedPlayers.size > 1) {
                                 InteractionManager.clearSelection();
                                 playerEl.classList.add('selected');
@@ -1283,7 +1280,6 @@
                 dom.board.addEventListener('pointerdown', (e) => {
                     if (appState.tool !== 'select') return;
                     
-                    // Si el clic se originó en un jugador o la pelota, ignorar para que el drag funcione
                     if (e.target.closest('.player') || e.target.closest('#ball')) return;
 
                     selectionPid = e.pointerId;
@@ -1304,10 +1300,14 @@
                     const onMove = (ev) => {
                         if (ev.pointerId !== selectionPid) return;
                         ev.preventDefault();
-                        hasMoved = true;
                         
-                        // Mostrar el selectionBox solo si hay un movimiento significativo
-                        dom.selectionBox.style.display = 'block';
+                        // Determinar si hay movimiento real
+                        if (Math.abs(ev.clientX - startX) > 5 || Math.abs(ev.clientY - startY) > 5) {
+                            hasMoved = true;
+                            dom.selectionBox.style.display = 'block';
+                        }
+                        
+                        if (!hasMoved) return;
 
                         const current = LayoutManager.clientToBoard(ev);
                         const left = Math.min(selectionStart.x, current.x);
@@ -1331,7 +1331,6 @@
                         dom.selectionBox.style.display = 'none';
                         selectionPid = null;
                         
-                        // Si no hubo movimiento (clic simple en el tablero), limpiar la selección
                         if (!hasMoved) {
                             InteractionManager.clearSelection();
                         }
@@ -1362,13 +1361,11 @@
                              appState.selectedPlayers.add(player);
                         }
                     } else if (!additive) {
-                        // Si no es un modo aditivo (Ctrl/Shift) y el jugador no está en el área, lo deseleccionamos
                         if (player.classList.contains('selected')) {
                             player.classList.remove('selected');
                             appState.selectedPlayers.delete(player);
                         }
                     }
-                    // Si es modo aditivo y no está en el área, mantenemos su estado anterior.
                 });
             },
 
@@ -1486,7 +1483,6 @@
                 DrawManager.renderDraw();
             },
             
-            // CORRECCIÓN 2: Implementación correcta de renderizado de flechas SVG con markers.
             renderDraw() {
                 dom.draw.innerHTML = '';
                 
@@ -1549,20 +1545,19 @@
                 });
                 UnitsManager.clearPassPreview();
             },
+            
             enableDrawing() {
+                // Se adjunta a dom.draw.
                 dom.draw.removeEventListener('pointerdown', DrawManager.onPointerDown, { passive: false });
-                dom.draw.removeEventListener('pointerup', DrawManager.onPointerUp, { passive: false });
-                
                 dom.draw.addEventListener('pointerdown', DrawManager.onPointerDown, { passive: false });
-                dom.draw.addEventListener('pointerup', DrawManager.onPointerUp, { passive: false });
             },
             
-            // CORRECCIÓN 3: Re-implementación del ciclo de dibujo con Pointer Capture.
+            // CORRECCIÓN CRÍTICA FINAL: Usamos document para onMove/onUp cuando dibujamos, lo que es crucial para SVG.
             onPointerDown(e) {
                 if (!isAuthorized) return;
                 if (e.button !== 0) return;
                 if (appState.tool === 'select') return;
-                // Si el clic se hizo sobre un jugador o la pelota, ignorar (la herramienta de drag del jugador se encarga)
+                // Si el clic se hizo sobre un jugador o la pelota, ignorar.
                 if (e.target.closest('.player') || e.target.closest('#ball')) return; 
 
                 e.preventDefault();
@@ -1570,6 +1565,7 @@
                 let pointerId = e.pointerId;
                 let startPoint = LayoutManager.clientToBoard(e);
                 
+                // 1. Iniciar estado
                 if (appState.tool === 'arrows') {
                     appState.drawingArrow = true;
                     DrawManager.drawArrowPreview(startPoint.x, startPoint.y, startPoint.x, startPoint.y);
@@ -1584,9 +1580,14 @@
                     };
                 }
 
-                // Capturar el puntero en la capa de dibujo para seguir el arrastre fuera de ella
-                dom.draw.setPointerCapture(pointerId);
+                // 2. Capturar el puntero en el elemento que inició el evento
+                if (e.target.setPointerCapture) {
+                    e.target.setPointerCapture(pointerId);
+                } else if (dom.draw.setPointerCapture) {
+                    dom.draw.setPointerCapture(pointerId);
+                }
 
+                // 3. Handlers de movimiento y finalización
                 const onMove = ev => {
                     if (ev.pointerId !== pointerId) return;
                     ev.preventDefault();
@@ -1598,7 +1599,8 @@
                         DrawManager.drawArrowPreview(startPoint.x, startPoint.y, currX, currY);
                     } else if (appState.tool === 'pen' && appState.drawingStroke) {
                         const lastPoint = appState.currentStroke.points[appState.currentStroke.points.length - 1];
-                        if (dist(lastPoint.x, lastPoint.y, currX, currY) > 5) {
+                        // Solo añadir si la distancia es suficiente
+                        if (dist(lastPoint.x, lastPoint.y, currX, currY) > 5) { 
                             appState.currentStroke.points.push({ x: currX, y: currY });
                             DrawManager.drawStrokePreview(appState.currentStroke);
                         }
@@ -1608,17 +1610,23 @@
                 const onUp = ev => {
                     if (ev.pointerId !== pointerId) return;
                     
-                    try { dom.draw.releasePointerCapture(pointerId); } catch {}
-                    dom.draw.removeEventListener('pointermove', onMove);
-                    dom.draw.removeEventListener('pointerup', onUp);
-                    dom.draw.removeEventListener('pointerleave', onUp); 
-
+                    // Liberar captura
+                    try { 
+                        if (ev.target.releasePointerCapture) ev.target.releasePointerCapture(pointerId);
+                        if (dom.draw.releasePointerCapture) dom.draw.releasePointerCapture(pointerId);
+                    } catch {}
+                    
+                    // Eliminar listeners de DOCUMENT
+                    document.removeEventListener('pointermove', onMove);
+                    document.removeEventListener('pointerup', onUp);
+                    
                     DrawManager.clearPreview();
 
                     const { x, y } = LayoutManager.clientToBoard(ev);
                     const endX = clamp(x, 0, WIDTH);
                     const endY = clamp(y, 0, HEIGHT);
                     
+                    // 4. Finalizar dibujo y guardar
                     if (appState.tool === 'arrows' && appState.drawingArrow) {
                         if (dist(startPoint.x, startPoint.y, endX, endY) > 10) {
                             appState.arrows.push({
@@ -1645,9 +1653,9 @@
                     if (dom.autoRecordChk.checked) TimelineManager.recordFrame();
                 };
 
-                dom.draw.addEventListener('pointermove', onMove, { passive: false });
-                dom.draw.addEventListener('pointerup', onUp, { passive: false });
-                dom.draw.addEventListener('pointerleave', onUp, { passive: false });
+                // 5. Adjuntar listeners a DOCUMENT (más robusto para arrastre)
+                document.addEventListener('pointermove', onMove, { passive: false });
+                document.addEventListener('pointerup', onUp, { passive: false });
             },
 
             drawArrowPreview(x1, y1, x2, y2) {
