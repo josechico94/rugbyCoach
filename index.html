@@ -1499,13 +1499,13 @@
             dom.draw.addEventListener('pointerleave', DrawManager.onPointerUp, { passive: false });
         },
         onPointerDown(e) {
-            if (appState.tool !== 'arrows' && appState.tool !== 'pen') return;
             if (!isAuthorized) return;
             if (e.button !== 0) return;
             
-            e.preventDefault();
-            e.stopPropagation();
+            // El bloque IF problemático que comprobaba si se hacía clic en un jugador
+            // ha sido ELIMINADO de aquí.
             
+            e.preventDefault();
             const { x, y } = LayoutManager.clientToBoard(e);
             appState.startPoint = { x, y };
 
