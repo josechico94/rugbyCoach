@@ -645,28 +645,44 @@
             successMessage: document.getElementById('successMessage')
         };
 
-        // --- SISTEMA DE AUTENTICACIÓN ---
-        async login() {
-                const email = dom.loginEmail.value;
-                const password = dom.loginPassword.value;
-                
-                // --- AGGIUNGI QUESTA LINEA PER FAVORE ---
-                console.log("Sto provando a loggarmi con:", { email, password });
-                // --- FINE AGGIUNTA ---
-                
-                if (!email || !password) {
-                    AuthManager.showMessage("Ingresa email y contraseña.", 'error');
-                    return;
-                }
-                
-                dom.btnLogin.disabled = true;
-                AuthManager.showMessage("Iniciando sesión...", 'info');
-                
+        const AuthManager = {
+            async init() {
                 try {
-                    await signInWithEmailAndPassword(auth, email, password);
-                    AuthManager.showMessage("", 'success');
+                    app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                    
+                    console.log('✅ Firebase inicializado correctamente');
+                    
+                    onAuthStateChanged(auth, async (user) => {
+                        currentUser = user;
+                        if (user) {
+                            isAuthorized = true;
+                            AuthManager.showApp();
+                            AuthManager.updateUI(true);
+                            AuthManager.showStatus(`¡Bienvenido ${user.email}! Modo Entrenador`, 'success');
+                            
+                            console.log('🔐 Usuario autenticado, probando conexión Firebase...');
+                            await AuthManager.testFirebaseConnection();
+                            
+                            InteractionManager.enableSelectionBox();
+                            InteractionManager.reinitializePlayerInteractions();
+                            UnitsManager.enableDragBall(() => { 
+                                StorageManager.saveBall(); 
+                                if (dom.autoRecordChk.checked) TimelineManager.recordFrame(); 
+                            });
+                            
+                            StorageManager.updatePlaySelect();
+    DrawManager.enableDrawing();
+                        } else {
+                            isAuthorized = false;
+                            firebaseConnected = false;
+                            AuthManager.showLogin();
+                            AuthManager.updateUI(false);
+                        }
+                    });
+                    
                 } catch (error) {
-                
                     console.error("Firebase falló:", error);
                     AuthManager.showLogin();
                     AuthManager.showStatus('Error de conexión. Intenta más tarde.', 'error');
