@@ -504,12 +504,10 @@
 <label><span data-i18n="controls.logo">Logo</span><input accept="image/*" id="teamLogoInput" type="file"/></label>
 </div>
 <div class="legend"><span class="swatch" id="teamALegendSwatch"></span> <span data-i18n="controls.team_a">Squadra A</span></div>
-<div class="legend"><span class="swatch" id="teamBLegendSwatch"></span> <span data-i18n="controls.team_b">Squadra B</span></div>
-</div>
-</div>
+<div class="legend"><span class="swatch" id="teamBLegendSwatch"></span> <span data-i18n="controls.team_b">Squadra B</span>
 <div class="group" id="zonesGroup">
 <div class="group-header">
-<strong data-i18n="sidebar.zones">Zonas</strong> <i class="fas fa-chevron-down group-icon"></i>
+<strong data-i18n="sidebar.zones">Zone</strong> <i class="fas fa-chevron-down group-icon"></i>
 </div>
 <div class="group-content">
 <div class="row" style="grid-template-columns: 1fr 1fr;">
@@ -521,6 +519,9 @@
 <button class="btn" id="zoneFullBtn" data-i18n="zones.full">Campo intero</button>
 </div>
 <small class="note" data-i18n="zones.note">Zoom automatico sulla porzione selezionata.</small>
+</div>
+</div>
+</div>
 </div>
 </div>
 <div class="group">
@@ -1133,11 +1134,16 @@ let appState = {
         presentationMode: false,
         teamColors: { blue: '#0d6efd', red: '#e63946' },
         teamLogoDataUrl: null
-// Field zones (view/crop)
+    };
+
+    // ==========================
+    // FIELD ZONES (crop + zoom)
+    // ==========================
     const FIELD_VIEW_KEY = 'rb_field_view';
 
-    // Coordinate X prelevate dal tuo SVG:
+    // Coordinate X dello SVG del campo:
     // tryline sinistra = 80, 22m = 309, metà = 600, 22m dx = 891, tryline dx = 1120
+    // Larghezza totale SVG = 1200 (WIDTH)
     const ZONE_X = {
         DEF: [0, 309],      // ingoal -> 22m
         MID: [309, 891],    // 22m -> 22m
@@ -1147,7 +1153,6 @@ let appState = {
 
     appState.fieldView = (localStorage.getItem(FIELD_VIEW_KEY) || 'FULL');
 
-    };
 
     const exportCanvasEl = document.getElementById('exportCanvas');
     const dom = {
@@ -1230,10 +1235,10 @@ let appState = {
         teamALegendSwatch: document.getElementById('teamALegendSwatch'),
         teamBLegendSwatch: document.getElementById('teamBLegendSwatch'),
         teamLogoInput: document.getElementById('teamLogoInput'),
-        zoneDefBtn: document.getElementById('zoneDefBtn'),
-        zoneMidBtn: document.getElementById('zoneMidBtn'),
-        zoneAttBtn: document.getElementById('zoneAttBtn'),
-        zoneFullBtn: document.getElementById('zoneFullBtn')
+        zoneDefBtn: document.getElementById(\'zoneDefBtn\'),
+        zoneMidBtn: document.getElementById(\'zoneMidBtn\'),
+        zoneAttBtn: document.getElementById(\'zoneAttBtn\'),
+        zoneFullBtn: document.getElementById(\'zoneFullBtn\')
     };
 
     // Apply initial language + wire language selector
@@ -1589,10 +1594,12 @@ async testFirebaseConnection() {
             const availW = vp.width;
             const availH = vp.height;
 
-            const [xmin, xmax] = (typeof FieldViewManager !== 'undefined' ? FieldViewManager.getXRange() : [0, WIDTH]);
+            const hasZones = (typeof FieldViewManager !== 'undefined');
+            const range = hasZones ? FieldViewManager.getXRange() : [0, WIDTH];
+            const xmin = range[0], xmax = range[1];
             const cropW = Math.max(1, xmax - xmin);
 
-            // salva crop per mapping input (soprattutto portrait)
+            // Persist crop in layout for correct pointer mapping
             appState.layout.cropXmin = xmin;
             appState.layout.cropXmax = xmax;
 
@@ -1606,7 +1613,7 @@ async testFirebaseConnection() {
                 const scaledW = cropW * scale;
                 const scaledH = HEIGHT * scale;
 
-                // centra e applica offset crop (xmin)
+                // Center + apply crop offset
                 appState.layout.tx = (availW - scaledW) / 2 - xmin * scale;
                 appState.layout.ty = (availH - scaledH) / 2;
 
@@ -1616,18 +1623,15 @@ async testFirebaseConnection() {
                 // PORTRAIT (rotate 90deg)
                 appState.layout.mode = 'portrait';
 
-                // dopo rotazione: dimensioni visive = (HEIGHT x cropW)
+                // After rotation, visible content dimensions are (HEIGHT x cropW)
                 const scale = Math.min(availW / HEIGHT, availH / cropW);
                 appState.layout.scale = scale;
 
-                const contentW = HEIGHT * scale; // larghezza visiva
-                const contentH = cropW * scale;  // altezza visiva (dipende dal crop)
+                const contentW = HEIGHT * scale;
+                const contentH = cropW * scale;
 
-                // Manteniamo la stessa logica (+contentW per rotazione)
+                // Keep your original rotate anchoring (+contentW) and add crop compensation on TY
                 appState.layout.tx = (availW - contentW) / 2 + contentW;
-
-                // Per “saltare” il tratto [0..xmin] lungo X (che diventa asse verticale dopo rotazione),
-                // aggiungiamo xmin*scale nel TY.
                 appState.layout.ty = (availH - contentH) / 2 + xmin * scale;
 
                 dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(90deg) scale(${scale})`;
@@ -1642,45 +1646,25 @@ async testFirebaseConnection() {
             const cy = e.clientY - vp.top;
 
             const xmin = appState.layout.cropXmin || 0;
-            const xmax = appState.layout.cropXmax || WIDTH;
 
             if (appState.layout.mode === 'portrait') {
                 const x_raw = (cx - appState.layout.tx);
                 const y_raw = (cy - appState.layout.ty);
 
-                // aggiungiamo xmin per mappare correttamente la zona visibile
                 const x = xmin + (y_raw / appState.layout.scale);
                 const y = (-x_raw / appState.layout.scale);
 
                 return { x: clamp(x, 0, WIDTH), y: clamp(y, 0, HEIGHT) };
             } else {
-                return { x: clamp((cx - appState.layout.tx) / appState.layout.scale, 0, WIDTH), y: clamp((cy - appState.layout.ty) / appState.layout.scale, 0, HEIGHT) };
-            }
-        },
-        deltaToBoard(dxClient, dyClient) {
-            if (appState.layout.mode === 'portrait') return { dx: dyClient / appState.layout.scale, dy: -dxClient / appState.layout.scale };
-            const scale = dom.board.getBoundingClientRect().width / WIDTH;
-            return { dx: dxClient / scale, dy: dyClient / scale };
-        },
-        renderGrid() {
-            const s = GRID_SIZE; dom.gridSvg.innerHTML = '';
-            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            for (let x = s; x < WIDTH; x += s) {
-                const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                l.setAttribute('x1', x); l.setAttribute('y1', 0); l.setAttribute('x2', x); l.setAttribute('y2', HEIGHT);
-                l.setAttribute('stroke', 'var(--grid)'); l.setAttribute('stroke-width', '1'); g.appendChild(l);
-            }
-            for (let y = s; y < HEIGHT; y += s) {
-                const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                l.setAttribute('x1', 0); l.setAttribute('y1', y); l.setAttribute('x2', WIDTH); l.setAttribute('y2', y);
-                l.setAttribute('stroke', 'var(--grid)'); l.setAttribute('stroke-width', '1'); g.appendChild(l);
-            }
-            dom.gridSvg.appendChild(g); dom.gridSvg.classList.toggle('active', dom.snapToggle.checked);
-        }
-    };
+                return {
+                    x: clamp((cx - appState.layout.tx) / appState.layout.scale, 0, WIDTH),
+                    y: clamp((cy - appState.layout.ty) / appState.layout.scale, 0, HEIGHT)
+                };
 
-
-const FieldViewManager = {
+    // ==========================
+    // FIELD VIEW MANAGER (Zones)
+    // ==========================
+    const FieldViewManager = {
         getXRange() {
             const v = appState.fieldView || 'FULL';
             return ZONE_X[v] || ZONE_X.FULL;
@@ -1688,8 +1672,7 @@ const FieldViewManager = {
 
         setView(view) {
             appState.fieldView = view;
-            try { localStorage.setItem(FIELD_VIEW_KEY, view); } catch { }
-
+            try { localStorage.setItem(FIELD_VIEW_KEY, view); } catch (e) {}
             this.updateButtons();
             LayoutManager.fitBoard();
         },
@@ -1714,6 +1697,29 @@ const FieldViewManager = {
         }
     };
 
+            }
+        },
+        deltaToBoard(dxClient, dyClient) {
+            if (appState.layout.mode === 'portrait') return { dx: dyClient / appState.layout.scale, dy: -dxClient / appState.layout.scale };
+            const scale = dom.board.getBoundingClientRect().width / WIDTH;
+            return { dx: dxClient / scale, dy: dyClient / scale };
+        },
+        renderGrid() {
+            const s = GRID_SIZE; dom.gridSvg.innerHTML = '';
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            for (let x = s; x < WIDTH; x += s) {
+                const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                l.setAttribute('x1', x); l.setAttribute('y1', 0); l.setAttribute('x2', x); l.setAttribute('y2', HEIGHT);
+                l.setAttribute('stroke', 'var(--grid)'); l.setAttribute('stroke-width', '1'); g.appendChild(l);
+            }
+            for (let y = s; y < HEIGHT; y += s) {
+                const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                l.setAttribute('x1', 0); l.setAttribute('y1', y); l.setAttribute('x2', WIDTH); l.setAttribute('y2', y);
+                l.setAttribute('stroke', 'var(--grid)'); l.setAttribute('stroke-width', '1'); g.appendChild(l);
+            }
+            dom.gridSvg.appendChild(g); dom.gridSvg.classList.toggle('active', dom.snapToggle.checked);
+        }
+    };
 
     const TeamVisualManager = {
         init() {
@@ -2346,6 +2352,13 @@ const FieldViewManager = {
         async renderFrameToCanvas(f) { if (!dom.ctx) return; await this.drawPitch(dom.ctx); f.players.forEach(p => this.drawPlayer(dom.ctx, p)); this.drawBall(dom.ctx, f.ball); },
         setupExportUI() {
             PremiumManager.initListeners();
+
+            // Zones (Field view)
+            dom.zoneDefBtn && dom.zoneDefBtn.addEventListener('click', () => FieldViewManager.setView('DEF'));
+            dom.zoneMidBtn && dom.zoneMidBtn.addEventListener('click', () => FieldViewManager.setView('MID'));
+            dom.zoneAttBtn && dom.zoneAttBtn.addEventListener('click', () => FieldViewManager.setView('ATT'));
+            dom.zoneFullBtn && dom.zoneFullBtn.addEventListener('click', () => FieldViewManager.setView('FULL'));
+
             // Open PRO modal only when user clicks CTA button
             const btnSidebarPro = document.getElementById('btnSidebarPro');
             btnSidebarPro?.addEventListener('click', (e) => {
@@ -2392,12 +2405,6 @@ const FieldViewManager = {
             dom.closeMenuBtn.addEventListener('click', closeM); dom.scrim.addEventListener('click', closeM);
             dom.addPlayerBtn.addEventListener('click', () => UnitsManager.addPlayer());
             dom.resetBtn.addEventListener('click', () => { UnitsManager.createPlayers(); UnitsManager.placeBall(); DrawManager.clearDraw(); StorageManager.savePositions(); StorageManager.saveBall(); });
-            // Zones
-            dom.zoneDefBtn?.addEventListener('click', () => FieldViewManager.setView('DEF'));
-            dom.zoneMidBtn?.addEventListener('click', () => FieldViewManager.setView('MID'));
-            dom.zoneAttBtn?.addEventListener('click', () => FieldViewManager.setView('ATT'));
-            dom.zoneFullBtn?.addEventListener('click', () => FieldViewManager.setView('FULL'));
-
             dom.snapToggle.addEventListener('change', () => LayoutManager.renderGrid());
             // default: labels visible
             dom.toggleLabelsBtn.classList.add('active');
@@ -2495,6 +2502,7 @@ async function initSharedView(sharedId) {
 
   // Layout
   LayoutManager.renderGrid();
+  FieldViewManager.init();
   LayoutManager.fitBoard();
 }
 
@@ -2507,8 +2515,6 @@ async function initSharedView(sharedId) {
     if (sharedId) {
       await initSharedView(sharedId);
       UIManager.setupEventListeners(); // el UI sigue funcionando pero en readOnly
-      FieldViewManager.init();
-      LayoutManager.fitBoard();
       return;
     }
 
