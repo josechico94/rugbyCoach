@@ -505,23 +505,22 @@
 <div class="legend"><span class="swatch" id="teamALegendSwatch"></span> <span data-i18n="controls.team_a">Squadra A</span></div>
 <div class="legend"><span class="swatch" id="teamBLegendSwatch"></span> <span data-i18n="controls.team_b">Squadra B</span>
 <div class="group" id="zonesGroup">
-<div class="group-header">
-<strong data-i18n="sidebar.zones">Zone</strong> <i class="fas fa-chevron-down group-icon"></i>
-</div>
-<div class="group-content">
-<div class="row" style="grid-template-columns: 1fr 1fr;">
-<button class="btn alt" id="zoneDefBtn" data-i18n="zones.def">Zona difensiva</button>
-<button class="btn alt" id="zoneMidBtn" data-i18n="zones.mid">Zona di gestazione</button>
-</div>
-<div class="row" style="grid-template-columns: 1fr 1fr;">
-<button class="btn alt" id="zoneAttBtn" data-i18n="zones.att">Zona di marcazione</button>
-<button class="btn" id="zoneFullBtn" data-i18n="zones.full">Campo intero</button>
-</div>
-<small class="note" data-i18n="zones.note">Zoom automatico sulla porzione selezionata.</small>
-</div>
-</div>
-</div>
-</div>
+  <div class="group-header">
+    <strong data-i18n="sidebar.zones">Zone</strong>
+    <i class="fas fa-chevron-down group-icon"></i>
+  </div>
+
+  <div class="group-content">
+    <div class="row" style="grid-template-columns: 1fr 1fr;">
+      <button class="btn alt" id="zoneMidBtn" data-i18n="zones.gest">Gestazione</button>
+      <button class="btn alt" id="zone22Btn" data-i18n="zones.22">22 metri</button>
+    </div>
+    <div class="row" style="grid-template-columns: 1fr 1fr;">
+      <button class="btn alt" id="lineBtn" data-i18n="zones.line">Line</button>
+      <button class="btn" id="zoneFullBtn" data-i18n="zones.full">Campo intero</button>
+    </div>
+    <small class="note" data-i18n="zones.note">Zoom automatico sulla porzione selezionata.</small>
+  </div>
 </div>
 <div class="group">
 <div class="group-header">
@@ -733,9 +732,10 @@
 
             "sidebar.controls": "Controlli",
             "sidebar.zones": "Zone",
-            "zones.def": "Zona difensiva",
-            "zones.mid": "Zona di gestazione",
-            "zones.att": "Zona di marcazione",
+            "zones.gest": "Zona di gestazione",
+            "zones.22": "Area 22 metri",
+            "zones.line": "Line-out",
+
             "zones.full": "Campo intero",
             "zones.note": "Zoom automatico sulla porzione selezionata.",
             "controls.show_labels": "Mostra etichette",
@@ -853,9 +853,10 @@
 
     "sidebar.controls": "Controles",
             "sidebar.zones": "Zonas",
-            "zones.def": "Zona defensiva",
-            "zones.mid": "Zona de gestación",
-            "zones.att": "Zona de marcación",
+            "zones.gest": "Zona de gestación",
+            "zones.22": "Área de 22 metros",
+            "zones.line": "Line",
+
             "zones.full": "Campo completo",
             "zones.note": "Zoom automático a la porción seleccionada.",
     "controls.show_labels": "Mostrar etiquetas",
@@ -942,9 +943,10 @@
 
             "sidebar.controls": "Controls",
             "sidebar.zones": "Zones",
-            "zones.def": "Defensive zone",
-            "zones.mid": "Build-up zone",
-            "zones.att": "Attacking zone",
+            "zones.gest": "Build-up zone",
+            "zones.22": "22-metre area",
+            "zones.line": "Line-out",
+
             "zones.full": "Full field",
             "zones.note": "Auto zoom to the selected portion.",
             "controls.show_labels": "Show labels",
@@ -1144,14 +1146,14 @@ let appState = {
     // tryline sinistra = 80, 22m = 309, metà = 600, 22m dx = 891, tryline dx = 1120
     // Larghezza totale SVG = 1200 (WIDTH)
     const ZONE_X = {
-        DEF: [0, 309],      // ingoal -> 22m
-        MID: [309, 891],    // 22m -> 22m
-        ATT: [891, 1200],   // 22m -> ingoal rivale
+        // 22m lines nel tuo SVG: 309 (22m sx) e 891 (22m dx)
+        // WIDTH totale = 1200
+        Z22: [0, 309],       // In-goal + 22m (zona 22 propria)
+        MID: [309, 891],     // 22m -> 22m (gestazione)
         FULL: [0, 1200]
     };
 
     appState.fieldView = (localStorage.getItem(FIELD_VIEW_KEY) || 'FULL');
-
 
     const exportCanvasEl = document.getElementById('exportCanvas');
     const dom = {
@@ -1234,9 +1236,9 @@ let appState = {
         teamALegendSwatch: document.getElementById('teamALegendSwatch'),
         teamBLegendSwatch: document.getElementById('teamBLegendSwatch'),
         teamLogoInput: document.getElementById('teamLogoInput'),
-        zoneDefBtn: document.getElementById('zoneDefBtn'),
         zoneMidBtn: document.getElementById('zoneMidBtn'),
-        zoneAttBtn: document.getElementById('zoneAttBtn'),
+        zone22Btn: document.getElementById('zone22Btn'),
+        lineBtn: document.getElementById('lineBtn'),
         zoneFullBtn: document.getElementById('zoneFullBtn')
     };
 
@@ -1244,7 +1246,6 @@ let appState = {
     applyI18n();
     const __langSel = document.getElementById('langSelect');
     if (__langSel) __langSel.addEventListener('change', (e) => setLang(e.target.value));
-
 
     const PremiumManager = {
         open() {
@@ -1678,9 +1679,8 @@ async testFirebaseConnection() {
 
         updateButtons() {
             const map = [
-                ['DEF', dom.zoneDefBtn],
                 ['MID', dom.zoneMidBtn],
-                ['ATT', dom.zoneAttBtn],
+                ['Z22', dom.zone22Btn],
                 ['FULL', dom.zoneFullBtn],
             ];
 
@@ -1869,6 +1869,38 @@ async testFirebaseConnection() {
             LayoutManager.applyUprightTransforms();
             TeamVisualManager.applyColorsToPlayers();
         },
+        createLineoutPlayers() {
+            // Line-out drill: 9 giocatori (Squadra A) in formazione, centrati nella vista corrente.
+            dom.playersLayer.innerHTML = '';
+            appState.selectedPlayers.clear();
+            appState.playerCounter.blue = 0;
+            appState.playerCounter.red = 0;
+
+            const [xmin, xmax] = (typeof FieldViewManager !== 'undefined' ? FieldViewManager.getXRange() : [0, WIDTH]);
+            const xCenter = (xmin + xmax) / 2;
+
+            // Line vicino alla touchline (in alto). Regola qui se la vuoi in basso.
+            const yLine = HEIGHT * 0.15;
+
+            // 7 saltatori/allineati + hooker + scrum-half (totale 9)
+            const spacing = WIDTH * 0.03;
+            const startX = xCenter - spacing * 3;
+
+            const positions = [];
+            for (let i = 0; i < 7; i++) {
+                positions.push({ team: 'blue', number: i + 1, x: startX + i * spacing, y: yLine });
+            }
+            // Hooker (8) e Scrum-half (9) leggermente dietro
+            positions.push({ team: 'blue', number: 8, x: xCenter, y: yLine + HEIGHT * 0.07 });
+            positions.push({ team: 'blue', number: 9, x: xCenter + spacing * 2, y: yLine + HEIGHT * 0.10 });
+
+            positions.forEach(p => dom.playersLayer.appendChild(this.createPlayerElement(p.team, p.number, p.x, p.y)));
+
+            this.placeBall();
+            StorageManager.savePositions();
+            UIManager.updatePlayerCount();
+        },
+
         enableDragPlayer(playerEl, onDrop) {
             if (!isAuthorized || appState.readOnly) return;
             let pointerId = null, startX = 0, startY = 0, origL = 0, origT = 0, lockBallToPlayer = false, offX = 0, offY = 0, isGroupMove = false, playerOffsets = [], isDragging = false;
@@ -2353,10 +2385,10 @@ async testFirebaseConnection() {
             PremiumManager.initListeners();
 
             // Zones (Field view)
-            dom.zoneDefBtn && dom.zoneDefBtn.addEventListener('click', () => FieldViewManager.setView('DEF'));
             dom.zoneMidBtn && dom.zoneMidBtn.addEventListener('click', () => FieldViewManager.setView('MID'));
-            dom.zoneAttBtn && dom.zoneAttBtn.addEventListener('click', () => FieldViewManager.setView('ATT'));
+            dom.zone22Btn && dom.zone22Btn.addEventListener('click', () => FieldViewManager.setView('Z22'));
             dom.zoneFullBtn && dom.zoneFullBtn.addEventListener('click', () => FieldViewManager.setView('FULL'));
+            dom.lineBtn && dom.lineBtn.addEventListener('click', () => UnitsManager.createLineoutPlayers());
 
             // Open PRO modal only when user clicks CTA button
             const btnSidebarPro = document.getElementById('btnSidebarPro');
