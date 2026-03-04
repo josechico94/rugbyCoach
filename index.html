@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 
 <html lang="it">
@@ -416,6 +417,42 @@
         .lab-actions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
         .lab-empty{ padding:14px; opacity:.75; font-size:13px; }
 
+
+        /* --- RugbyLab Presentation Controls --- */
+        .lab-present-controls{
+            position: fixed;
+            left: 50%;
+            bottom: calc(14px + env(safe-area-inset-bottom));
+            transform: translateX(-50%);
+            display: none;
+            gap: 10px;
+            z-index: 4600;
+            padding: 10px;
+            background: rgba(15, 23, 32, 0.75);
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 14px;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 10px 30px rgba(0,0,0,.45);
+        }
+        .lab-present-controls.show{ display:flex; }
+        .lab-present-controls .btn{ box-shadow:none; }
+        .lab-present-title{
+            position: fixed;
+            top: calc(12px + env(safe-area-inset-top));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 4600;
+            display:none;
+            padding: 8px 12px;
+            background: rgba(15, 23, 32, 0.75);
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 12px;
+            backdrop-filter: blur(6px);
+            font-size: 13px;
+            opacity: .95;
+        }
+        .lab-present-title.show{ display:block; }
+
 </style>
 </head>
 <body>
@@ -524,6 +561,16 @@
 <input id="snapToggle" type="checkbox"/> <span data-i18n="controls.snap_grid">Aggancia alla griglia</span></label>
 <label class="chk" style="display:flex;align-items:center;gap:8px;border:none;background:transparent;padding:0;box-shadow:none">
 <input id="verticalField" type="checkbox"/> <span data-i18n="controls.vertical_field">Campo verticale</span></label>
+<div class="row" style="grid-template-columns: 1fr;">
+<label><span data-i18n="controls.field_view">Visuale campo</span>
+<select id="fieldView">
+  <option value="full" data-i18n="controls.field_full">Campo intero</option>
+  <option value="half-left" data-i18n="controls.field_half_left">Mezza campo (sinistra)</option>
+  <option value="half-right" data-i18n="controls.field_half_right">Mezza campo (destra)</option>
+</select>
+</label>
+</div>
+
 <div class="player-counter">
 <span><span data-i18n="controls.players">Giocatori</span>: <span id="playerCount">0</span>/30</span>
 <button class="btn alt" data-i18n="controls.add_player" id="addPlayerBtn" style="margin-left: auto;">+ Giocatore</button>
@@ -597,6 +644,7 @@
   <div class="group-content">
     <div class="row" style="grid-template-columns: 1fr;">
       <button class="btn" id="labOpenBtn" data-i18n="lab.open">Apri RugbyLab</button>
+      <button class="btn alt" id="labPresentBtn" data-i18n="lab.present">Presentazione</button>
     </div>
     <div class="row" style="grid-template-columns: 1fr 1fr;">
       <button class="btn alt" id="labCreateBtn" data-i18n="lab.create_library">Crea Libreria</button>
@@ -739,10 +787,12 @@
         <div class="lab-actions">
           <button class="btn" id="labModalShareBtn" data-i18n="lab.share_library">Condividi libreria</button>
           <button class="btn alt" id="labModalCloneBtn" data-i18n="lab.clone_library">Clona libreria</button>
+          <button class="btn" id="labModalPresentBtn" data-i18n="lab.present">Presentazione</button>
         </div>
       </div>
 
       <div class="lab-row">
+        <input class="login-input" id="labSectionInput" data-i18n-placeholder="lab.section" placeholder="Sezione (es: 5m, Lineout)" type="text"/>
         <select id="labPlaySelect"></select>
         <div class="lab-actions">
           <button class="btn" id="labAddPlayBtn" data-i18n="lab.add">Aggiungi</button>
@@ -754,6 +804,14 @@
       <div class="lab-empty" id="labEmpty" style="display:none;" data-i18n="lab.no_items">Nessuna giocata nella libreria.</div>
     </div>
   </div>
+</div>
+
+<!-- RugbyLab Presentation Controls -->
+<div class="lab-present-title" id="labPresentTitle">📽️</div>
+<div class="lab-present-controls" id="labPresentControls">
+  <button class="btn alt" id="labPresentPrevBtn">◀</button>
+  <button class="btn primary" id="labPresentNextBtn">▶</button>
+  <button class="btn danger" id="labPresentExitBtn">✕</button>
 </div>
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -800,8 +858,9 @@
             "lab.removed": "Rimossa dalla libreria",
             "lab.link_copied": "Link libreria copiato!",
             "lab.shared_readonly": "🔗 Libreria condivisa (sola lettura)",
-            "lab.clone_need_login": "Per clonare devi fare login."
-
+            "lab.clone_need_login": "Per clonare devi fare login.",
+            "lab.present": "Presentazione",
+            "lab.section": "Sezione (es: 5m, Lineout)",
             "premium.title": "Diventa Allenatore PRO",
             "premium.desc": "Sblocca tutto il potenziale della tua lavagna tattica.",
             "premium.features.animation.title": "Animazione e Video",
@@ -953,8 +1012,9 @@
     "lab.removed": "Eliminada de la biblioteca",
     "lab.link_copied": "¡Link de biblioteca copiado!",
     "lab.shared_readonly": "🔗 Biblioteca compartida (solo lectura)",
-    "lab.clone_need_login": "Debes iniciar sesión para clonar."
-
+    "lab.clone_need_login": "Debes iniciar sesión para clonar.",
+    "lab.present": "Presentación",
+    "lab.section": "Sección (ej: 5m, Lineout)",
     "premium.title": "Conviértete en Entrenador PRO",
     "premium.desc": "Desbloquea todo el potencial de tu pizarra táctica.",
     "premium.features.animation.title": "Animación y Video",
@@ -989,6 +1049,10 @@
     "controls.reset_positions": "Restablecer posiciones",
     "controls.snap_grid": "Ajustar a la cuadrícula",
     "controls.vertical_field": "Campo vertical",
+    "controls.field_view": "Vista del campo",
+    "controls.field_full": "Campo completo",
+    "controls.field_half_left": "Medio campo (izquierda)",
+    "controls.field_half_right": "Medio campo (derecha)",
     "controls.players": "Jugadores",
     "controls.add_player": "+ Jugador",
     "controls.color_a": "Color Equipo A",
@@ -1053,8 +1117,9 @@
             "lab.removed": "Removed from library",
             "lab.link_copied": "Library link copied!",
             "lab.shared_readonly": "🔗 Shared library (read-only)",
-            "lab.clone_need_login": "You must sign in to clone."
-
+            "lab.clone_need_login": "You must sign in to clone.",
+            "lab.present": "Presentation",
+            "lab.section": "Section (e.g., 5m, Lineout)",
             "premium.title": "Become a PRO Coach",
             "premium.desc": "Unlock the full power of your tactical board.",
             "premium.features.animation.title": "Animation & Video",
@@ -1100,6 +1165,10 @@
             "controls.reset_positions": "Reset positions",
             "controls.snap_grid": "Snap to grid",
             "controls.vertical_field": "Vertical field",
+            "controls.field_view": "Field view",
+            "controls.field_full": "Full field",
+            "controls.field_half_left": "Half field (left)",
+            "controls.field_half_right": "Half field (right)",
             "controls.players": "Players",
             "controls.add_player": "+ Player",
             "controls.color_a": "Team A color",
@@ -1257,7 +1326,9 @@ let app = null, db = null, auth = null, isAuthorized = false, currentUser = null
 let appState = {
         isPremium: false,
         proModalAutoOpen: false, // do not auto-open PRO modal on app start
-        layout: { mode: 'landscape', scale: 1, tx: 0, ty: 0, forceVertical: false },
+        layout: {
+            fieldView: 'full', // 'full' | 'half-left' | 'half-right'
+ mode: 'landscape', scale: 1, tx: 0, ty: 0, forceVertical: false },
         tool: 'select',
         arrows: [],
         strokes: [],
@@ -1316,6 +1387,7 @@ let appState = {
         resetBtn: document.getElementById('reset'),
         snapToggle: document.getElementById('snapToggle'),
         verticalFieldChk: document.getElementById('verticalField'),
+        fieldViewSel: document.getElementById('fieldView'),
         toolSelectBtn: document.getElementById('toolSelect'),
         toolArrowsBtn: document.getElementById('toolArrows'),
         toolPenBtn: document.getElementById('toolPen'),
@@ -1385,7 +1457,15 @@ let appState = {
         labAddPlayBtn: document.getElementById('labAddPlayBtn'),
         labLoadPlayBtn: document.getElementById('labLoadPlayBtn'),
         labItemsList: document.getElementById('labItemsList'),
-        labEmpty: document.getElementById('labEmpty')
+        labEmpty: document.getElementById('labEmpty'),
+        labPresentBtn: document.getElementById('labPresentBtn'),
+        labModalPresentBtn: document.getElementById('labModalPresentBtn'),
+        labSectionInput: document.getElementById('labSectionInput'),
+        labPresentControls: document.getElementById('labPresentControls'),
+        labPresentTitle: document.getElementById('labPresentTitle'),
+        labPresentPrevBtn: document.getElementById('labPresentPrevBtn'),
+        labPresentNextBtn: document.getElementById('labPresentNextBtn'),
+        labPresentExitBtn: document.getElementById('labPresentExitBtn')
     };
 
     // Apply initial language + wire language selector
@@ -1743,25 +1823,44 @@ async testFirebaseConnection() {
             [...dom.playersLayer.children].forEach(el => { el.style.transform = rotatePlayers ? 'translate(-50%, -50%) rotate(-90deg)' : 'translate(-50%, -50%)'; });
             dom.ball.style.transform = rotatePlayers ? 'translate(-50%, -50%) rotate(-90deg)' : 'translate(-50%, -50%) rotate(-15deg)';
         },
+        getViewConfig() {
+            const v = (appState.layout.fieldView || 'full');
+            if (v === 'half-left') return { viewW: WIDTH / 2, offsetX: 0 };
+            if (v === 'half-right') return { viewW: WIDTH / 2, offsetX: WIDTH / 2 };
+            return { viewW: WIDTH, offsetX: 0 };
+        },
+        clampToView(x, y) {
+            const cfg = this.getViewConfig();
+            const minX = cfg.offsetX;
+            const maxX = cfg.offsetX + cfg.viewW;
+            return { x: clamp(x, minX, maxX), y: clamp(y, 0, HEIGHT) };
+        },
+
         fitBoard() {
             const vp = dom.boardViewport.getBoundingClientRect();
             const availW = vp.width; const availH = vp.height;
             if (!this.isPortraitLike()) {
                 appState.layout.mode = 'landscape';
-                appState.layout.scale = Math.min(availW / WIDTH, availH / HEIGHT);
-                const scaledW = WIDTH * appState.layout.scale;
+                const cfg = this.getViewConfig();
+                appState.layout.scale = Math.min(availW / cfg.viewW, availH / HEIGHT);
+                const cfg2 = this.getViewConfig();
+                const scaledW = cfg2.viewW * appState.layout.scale;
                 const scaledH = HEIGHT * appState.layout.scale;
-                appState.layout.tx = (availW - scaledW) / 2;
+                const cfg3 = this.getViewConfig();
+                appState.layout.tx = (availW - scaledW) / 2 - (cfg3.offsetX * appState.layout.scale);
                 appState.layout.ty = (availH - scaledH) / 2;
                 dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(0deg) scale(${appState.layout.scale})`;
                 dom.boardWrap.style.transformOrigin = 'top left';
             } else {
                 appState.layout.mode = 'portrait';
-                appState.layout.scale = Math.min(availW / HEIGHT, availH / WIDTH);
+                const cfgP = this.getViewConfig();
+                appState.layout.scale = Math.min(availW / HEIGHT, availH / cfgP.viewW);
                 const contentW = HEIGHT * appState.layout.scale;
-                const contentH = WIDTH * appState.layout.scale;
+                const cfgP2 = this.getViewConfig();
+                const contentH = cfgP2.viewW * appState.layout.scale;
                 appState.layout.tx = (availW - contentW) / 2 + contentW;
-                appState.layout.ty = (availH - contentH) / 2;
+                const cfgP3 = this.getViewConfig();
+                appState.layout.ty = (availH - contentH) / 2 - (cfgP3.offsetX * appState.layout.scale);
                 dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(90deg) scale(${appState.layout.scale})`;
                 dom.boardWrap.style.transformOrigin = 'top left';
             }
@@ -1774,9 +1873,11 @@ async testFirebaseConnection() {
             if (appState.layout.mode === 'portrait') {
                 const x_raw = (cx - appState.layout.tx);
                 const y_raw = (cy - appState.layout.ty);
-                return { x: clamp(y_raw / appState.layout.scale, 0, WIDTH), y: clamp(-x_raw / appState.layout.scale, 0, HEIGHT) };
+                const pt = { x: y_raw / appState.layout.scale, y: -x_raw / appState.layout.scale };
+                return this.clampToView(pt.x, pt.y);
             } else {
-                return { x: clamp((cx - appState.layout.tx) / appState.layout.scale, 0, WIDTH), y: clamp((cy - appState.layout.ty) / appState.layout.scale, 0, HEIGHT) };
+                const pt = { x: (cx - appState.layout.tx) / appState.layout.scale, y: (cy - appState.layout.ty) / appState.layout.scale };
+                return this.clampToView(pt.x, pt.y);
             }
         },
         deltaToBoard(dxClient, dyClient) {
@@ -2617,6 +2718,7 @@ async testFirebaseConnection() {
 
             items.push({
                 playName: name,
+                section: sanitizeInput(dom.labSectionInput?.value || ''),
                 addedAt: new Date().toISOString(),
                 // embed snapshot for sharing
                 snapshot: {
@@ -2703,8 +2805,28 @@ async testFirebaseConnection() {
             items.forEach((it, idx) => {
                 const row = document.createElement('div');
                 row.className = 'lab-item';
+                if (!readOnly) {
+                    row.setAttribute('draggable', 'true');
+                    row.dataset.index = String(idx);
+
+                    row.addEventListener('dragstart', (e) => {
+                        RugbyLabManager._dragFromIndex = Number(row.dataset.index);
+                        e.dataTransfer && e.dataTransfer.setData('text/plain', row.dataset.index);
+                    });
+                    row.addEventListener('dragover', (e) => { e.preventDefault(); });
+                    row.addEventListener('drop', async (e) => {
+                        e.preventDefault();
+                        const fromStr = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
+                        const from = (RugbyLabManager._dragFromIndex != null) ? RugbyLabManager._dragFromIndex : Number(fromStr);
+                        const to = Number(row.dataset.index);
+                        RugbyLabManager._dragFromIndex = null;
+                        await RugbyLabManager.reorderItems(from, to);
+                    });
+                }
                 const left = document.createElement('div');
-                left.innerHTML = `<strong>${it.playName || it.snapshot?.name || 'Play'}</strong><div><small>${it.addedAt ? new Date(it.addedAt).toLocaleString() : ''}</small></div>`;
+                const sec = (it.section || '').trim();
+                const secHtml = sec ? `<span class="lab-pill" style="margin-left:8px;">${sec}</span>` : '';
+                left.innerHTML = `<strong>${it.playName || it.snapshot?.name || 'Play'}${secHtml}</strong><div><small>${it.addedAt ? new Date(it.addedAt).toLocaleString() : ''}</small></div>`;
                 const right = document.createElement('div');
                 right.className = 'lab-actions';
 
@@ -2738,6 +2860,94 @@ async testFirebaseConnection() {
             });
         },
 
+
+        // --- Drag & drop reorder (owner libraries only) ---
+        _dragFromIndex: null,
+
+        async reorderItems(fromIndex, toIndex) {
+            this.ensureAuthOrThrow();
+            const libId = this.selectedLibraryId();
+            if (!libId) return;
+
+            const ref = doc(db, "users", currentUser.uid, "libraries", libId);
+            const snap = await getDoc(ref);
+            if (!snap.exists()) return;
+            const lib = snap.data() || {};
+            const items = Array.isArray(lib.items) ? lib.items : [];
+            if (fromIndex < 0 || fromIndex >= items.length || toIndex < 0 || toIndex >= items.length) return;
+            if (fromIndex === toIndex) return;
+
+            const moved = items.splice(fromIndex, 1)[0];
+            items.splice(toIndex, 0, moved);
+
+            await setDoc(ref, { ...lib, items, updatedAt: new Date().toISOString() }, { merge: true });
+            await this.renderSelectedLibrary();
+        },
+
+        // --- Presentation mode (works for owner + shared read-only) ---
+        _presentIndex: 0,
+
+        async startPresentation() {
+            document.body.classList.add('presentation-mode');
+            if (dom.labPresentControls) dom.labPresentControls.classList.add('show');
+            if (dom.labPresentTitle) dom.labPresentTitle.classList.add('show');
+
+            this.close();
+
+            let items = null;
+
+            if (appState.sharedLibrary?.items) {
+                items = appState.sharedLibrary.items;
+            } else {
+                this.ensureAuthOrThrow();
+                const libId = this.selectedLibraryId();
+                if (!libId) return alert(t('lab.select_library'));
+                const ref = doc(db, "users", currentUser.uid, "libraries", libId);
+                const snap = await getDoc(ref);
+                if (!snap.exists()) return alert("Library not found");
+                const lib = snap.data() || {};
+                items = Array.isArray(lib.items) ? lib.items : [];
+            }
+
+            if (!items || items.length === 0) return alert(t('lab.no_items'));
+
+            appState._presentItems = items;
+            this._presentIndex = 0;
+            await this._presentLoadIndex(this._presentIndex);
+        },
+
+        async _presentLoadIndex(i) {
+            const items = appState._presentItems || [];
+            if (!items[i]) return;
+            const it = items[i];
+            const title = it.playName || it.snapshot?.name || 'Play';
+            const sec = (it.section || '').trim();
+            if (dom.labPresentTitle) dom.labPresentTitle.textContent = `📽️ ${title}${sec ? ' • ' + sec : ''}  (${i+1}/${items.length})`;
+            if (it.snapshot) {
+                await StorageManager.processPlayData(it.snapshot, title);
+            }
+        },
+
+        async presentNext() {
+            const items = appState._presentItems || [];
+            if (items.length === 0) return;
+            this._presentIndex = Math.min(items.length - 1, this._presentIndex + 1);
+            await this._presentLoadIndex(this._presentIndex);
+        },
+
+        async presentPrev() {
+            const items = appState._presentItems || [];
+            if (items.length === 0) return;
+            this._presentIndex = Math.max(0, this._presentIndex - 1);
+            await this._presentLoadIndex(this._presentIndex);
+        },
+
+        exitPresentation() {
+            document.body.classList.remove('presentation-mode');
+            if (dom.labPresentControls) dom.labPresentControls.classList.remove('show');
+            if (dom.labPresentTitle) dom.labPresentTitle.classList.remove('show');
+            appState._presentItems = null;
+        },
         async shareSelectedLibrary() {
             // 👑 PREMIUM gate (same spirit as share play)
             if (!PremiumManager.checkAndShowModal()) return;
@@ -2887,6 +3097,15 @@ const ExportManager = {
     };
 
     const UIManager = {
+        applyReadOnlyMode() {
+            appState.readOnly = true;
+            dom.savePlayBtn && (dom.savePlayBtn.disabled = true);
+            dom.deletePlayBtn && (dom.deletePlayBtn.disabled = true);
+            dom.duplicatePlayBtn && (dom.duplicatePlayBtn.disabled = true);
+            dom.recordStepBtn && (dom.recordStepBtn.disabled = true);
+            dom.importTimelineBtn && (dom.importTimelineBtn.disabled = true);
+        },
+
         initAccordion() {
             document.querySelectorAll('.group-header').forEach(h => {
                 h.addEventListener('click', () => {
@@ -2911,6 +3130,12 @@ const ExportManager = {
             dom.btnAuthAction.addEventListener('click', () => AuthManager.logout());
             window.addEventListener('resize', () => { LayoutManager.fitBoard(); if (window.innerWidth <= 900 && dom.mainApp.style.display !== 'none') dom.menuBtn.style.display = 'grid'; else dom.menuBtn.style.display = 'none'; });
             dom.verticalFieldChk.addEventListener('change', () => { appState.layout.forceVertical = dom.verticalFieldChk.checked; LayoutManager.fitBoard(); });
+            dom.fieldViewSel?.addEventListener('change', () => {
+                appState.layout.fieldView = dom.fieldViewSel.value || 'full';
+                localStorage.setItem('rb_field_view', appState.layout.fieldView);
+                LayoutManager.fitBoard();
+            });
+
             dom.menuBtn.addEventListener('click', () => { dom.sidebar.classList.add('open'); dom.scrim.classList.add('show'); });
             const closeM = () => { dom.sidebar.classList.remove('open'); dom.scrim.classList.remove('show'); };
             dom.closeMenuBtn.addEventListener('click', closeM); dom.scrim.addEventListener('click', closeM);
@@ -2981,7 +3206,14 @@ const ExportManager = {
                 if (token) return RugbyLabManager.cloneSharedLibrary(token).catch(console.error);
                 alert("Apri un link di libreria per clonare.");
             });
-            dom.labAddPlayBtn?.addEventListener('click', () => RugbyLabManager.addPlayToSelectedLibrary(dom.labPlaySelect?.value || '').catch(console.error));
+            
+            dom.labPresentBtn?.addEventListener('click', () => RugbyLabManager.startPresentation().catch(console.error));
+            dom.labModalPresentBtn?.addEventListener('click', () => RugbyLabManager.startPresentation().catch(console.error));
+
+            dom.labPresentPrevBtn?.addEventListener('click', () => RugbyLabManager.presentPrev().catch(console.error));
+            dom.labPresentNextBtn?.addEventListener('click', () => RugbyLabManager.presentNext().catch(console.error));
+            dom.labPresentExitBtn?.addEventListener('click', () => RugbyLabManager.exitPresentation());
+dom.labAddPlayBtn?.addEventListener('click', () => RugbyLabManager.addPlayToSelectedLibrary(dom.labPlaySelect?.value || '').catch(console.error));
             dom.labLoadPlayBtn?.addEventListener('click', async () => {
                 const name = dom.labPlaySelect?.value || '';
                 if (!name) return;
@@ -3008,6 +3240,12 @@ const ExportManager = {
             });
 
             if (window.innerWidth <= 900) { dom.verticalFieldChk.checked = true; appState.layout.forceVertical = true; }
+            // Restore field view
+            const fv = localStorage.getItem('rb_field_view');
+            if (fv) appState.layout.fieldView = fv;
+            if (dom.fieldViewSel) dom.fieldViewSel.value = appState.layout.fieldView || 'full';
+            LayoutManager.fitBoard();
+
             ExportManager.setupExportUI(); UIManager.setupHotkeys();
         },
         applyReadOnlyMode() {
