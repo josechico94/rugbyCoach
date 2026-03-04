@@ -383,6 +383,39 @@
             .main-app-visible .hamburger { display: grid !important; }
         }
     
+
+        /* --- RUGBYLAB MODAL --- */
+        .lab-overlay{
+            position:fixed; inset:0; background: rgba(0,0,0,.75); backdrop-filter: blur(4px);
+            display:none; align-items:center; justify-content:center; z-index:4500; padding:20px;
+        }
+        .lab-card{
+            width:100%; max-width:720px; background: linear-gradient(145deg, #162232, #0f1720);
+            border:1px solid #263443; border-radius:16px; box-shadow: 0 10px 40px rgba(0,0,0,.5);
+            padding:18px;
+        }
+        .lab-card header{
+            display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;
+        }
+        .lab-title{ font-size:18px; font-weight:800; letter-spacing:.02em; }
+        .lab-sub{ font-size:12px; opacity:.75; margin-top:4px; }
+        .lab-close{
+            width:36px; height:36px; border-radius:10px; border:1px solid #263443; background:#15202b; color:var(--ink);
+            cursor:pointer;
+        }
+        .lab-grid{ display:grid; gap:10px; grid-template-columns: 1fr; }
+        .lab-row{ display:grid; gap:10px; grid-template-columns: 1fr 1fr; }
+        .lab-row-3{ display:grid; gap:10px; grid-template-columns: 1fr 1fr 1fr; }
+        .lab-list{ margin-top:10px; border:1px solid #263443; border-radius:12px; overflow:hidden; }
+        .lab-item{ display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:center; padding:10px 12px;
+                   border-bottom:1px solid rgba(255,255,255,.06); background: rgba(0,0,0,.12); }
+        .lab-item:last-child{ border-bottom:none; }
+        .lab-item strong{ font-size:14px; }
+        .lab-item small{ opacity:.75; font-size:12px; }
+        .lab-pill{ font-size:11px; padding:3px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.18); opacity:.85; }
+        .lab-actions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+        .lab-empty{ padding:14px; opacity:.75; font-size:13px; }
+
 </style>
 </head>
 <body>
@@ -503,24 +536,8 @@
 <label><span data-i18n="controls.logo">Logo</span><input accept="image/*" id="teamLogoInput" type="file"/></label>
 </div>
 <div class="legend"><span class="swatch" id="teamALegendSwatch"></span> <span data-i18n="controls.team_a">Squadra A</span></div>
-<div class="legend"><span class="swatch" id="teamBLegendSwatch"></span> <span data-i18n="controls.team_b">Squadra B</span>
-<div class="group" id="zonesGroup">
-  <div class="group-header">
-    <strong data-i18n="sidebar.zones">Zone</strong>
-    <i class="fas fa-chevron-down group-icon"></i>
-  </div>
-
-  <div class="group-content">
-    <div class="row" style="grid-template-columns: 1fr 1fr;">
-      <button class="btn alt" id="zoneMidBtn" data-i18n="zones.gest">Gestazione</button>
-      <button class="btn alt" id="zone22Btn" data-i18n="zones.22">22 metri</button>
-    </div>
-    <div class="row" style="grid-template-columns: 1fr 1fr;">
-      <button class="btn alt" id="lineBtn" data-i18n="zones.line">Line</button>
-      <button class="btn" id="zoneFullBtn" data-i18n="zones.full">Campo intero</button>
-    </div>
-    <small class="note" data-i18n="zones.note">Zoom automatico sulla porzione selezionata.</small>
-  </div>
+<div class="legend"><span class="swatch" id="teamBLegendSwatch"></span> <span data-i18n="controls.team_b">Squadra B</span></div>
+</div>
 </div>
 <div class="group">
 <div class="group-header">
@@ -571,6 +588,27 @@
 <button class="btn" data-i18n="plays.load" id="btnLoadPlay">Carica</button>
 </div>
 </div>
+</div>
+
+<div class="group">
+  <div class="group-header">
+    <strong data-i18n="sidebar.lab">RugbyLab</strong> <i class="fas fa-chevron-down group-icon"></i>
+  </div>
+  <div class="group-content">
+    <div class="row" style="grid-template-columns: 1fr;">
+      <button class="btn" id="labOpenBtn" data-i18n="lab.open">Apri RugbyLab</button>
+    </div>
+    <div class="row" style="grid-template-columns: 1fr 1fr;">
+      <button class="btn alt" id="labCreateBtn" data-i18n="lab.create_library">Crea Libreria</button>
+      <button class="btn" id="labAddCurrentBtn" data-i18n="lab.add_current_play">Aggiungi giocata</button>
+    </div>
+    <select id="labLibrarySelect"></select>
+    <div class="row" style="grid-template-columns: 1fr 1fr;">
+      <button class="btn" id="labShareBtn" data-i18n="lab.share_library">Condividi libreria</button>
+      <button class="btn alt" id="labCloneBtn" data-i18n="lab.clone_library">Clona libreria</button>
+    </div>
+    <small class="note" data-i18n="lab.note">Suggerimento: salva una giocata e poi aggiungila alla libreria.</small>
+  </div>
 </div>
 <div class="group">
 <div class="group-header">
@@ -672,6 +710,51 @@
 <canvas height="700" id="exportCanvas" style="position:fixed; top:-9999px; left:-9999px;" width="1200"></canvas>
 </main>
 </div>
+
+<!-- RugbyLab Overlay -->
+<div class="lab-overlay" id="labOverlay" aria-hidden="true">
+  <div class="lab-card" role="dialog" aria-modal="true">
+    <header>
+      <div>
+        <div class="lab-title">📚 <span data-i18n="lab.title">RugbyLab</span></div>
+        <div class="lab-sub" data-i18n="lab.subtitle">Gestisci librerie di giocate, condividi e clona.</div>
+      </div>
+      <button class="lab-close" id="labCloseBtn" aria-label="Close">✕</button>
+    </header>
+
+    <div class="lab-grid">
+      <div class="lab-row">
+        <input class="login-input" id="labNameInput" data-i18n-placeholder="lab.library_name" placeholder="Nome libreria" type="text"/>
+        <input class="login-input" id="labDescInput" data-i18n-placeholder="lab.library_desc" placeholder="Descrizione (opzionale)" type="text"/>
+      </div>
+
+      <div class="lab-row-3">
+        <button class="btn primary" id="labSaveLibraryBtn" data-i18n="lab.save">Salva</button>
+        <button class="btn alt" id="labRefreshBtn" data-i18n="lab.refresh">Aggiorna</button>
+        <button class="btn danger" id="labDeleteLibraryBtn" data-i18n="lab.delete_library">Elimina</button>
+      </div>
+
+      <div class="lab-row">
+        <select id="labModalLibrarySelect"></select>
+        <div class="lab-actions">
+          <button class="btn" id="labModalShareBtn" data-i18n="lab.share_library">Condividi libreria</button>
+          <button class="btn alt" id="labModalCloneBtn" data-i18n="lab.clone_library">Clona libreria</button>
+        </div>
+      </div>
+
+      <div class="lab-row">
+        <select id="labPlaySelect"></select>
+        <div class="lab-actions">
+          <button class="btn" id="labAddPlayBtn" data-i18n="lab.add">Aggiungi</button>
+          <button class="btn alt" id="labLoadPlayBtn" data-i18n="lab.load_play">Carica</button>
+        </div>
+      </div>
+
+      <div class="lab-list" id="labItemsList"></div>
+      <div class="lab-empty" id="labEmpty" style="display:none;" data-i18n="lab.no_items">Nessuna giocata nella libreria.</div>
+    </div>
+  </div>
+</div>
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -691,6 +774,34 @@
     // --- i18n (IT/EN) ---
     const translations = {
         it: {
+            "sidebar.lab": "RugbyLab",
+            "lab.title": "RugbyLab",
+            "lab.subtitle": "Gestisci librerie di giocate, condividi e clona.",
+            "lab.open": "Apri RugbyLab",
+            "lab.create_library": "Crea Libreria",
+            "lab.add_current_play": "Aggiungi giocata",
+            "lab.share_library": "Condividi libreria",
+            "lab.clone_library": "Clona libreria",
+            "lab.note": "Suggerimento: salva una giocata e poi aggiungila alla libreria.",
+            "lab.library_name": "Nome libreria",
+            "lab.library_desc": "Descrizione (opzionale)",
+            "lab.save": "Salva",
+            "lab.refresh": "Aggiorna",
+            "lab.delete_library": "Elimina",
+            "lab.add": "Aggiungi",
+            "lab.load_play": "Carica",
+            "lab.no_items": "Nessuna giocata nella libreria.",
+            "lab.select_library": "Seleziona libreria",
+            "lab.select_play": "Seleziona giocata",
+            "lab.created": "Libreria creata!",
+            "lab.updated": "Libreria aggiornata!",
+            "lab.deleted": "Libreria eliminata!",
+            "lab.added": "Giocata aggiunta!",
+            "lab.removed": "Rimossa dalla libreria",
+            "lab.link_copied": "Link libreria copiato!",
+            "lab.shared_readonly": "🔗 Libreria condivisa (sola lettura)",
+            "lab.clone_need_login": "Per clonare devi fare login."
+
             "premium.title": "Diventa Allenatore PRO",
             "premium.desc": "Sblocca tutto il potenziale della tua lavagna tattica.",
             "premium.features.animation.title": "Animazione e Video",
@@ -731,13 +842,6 @@
             "pro.cta": "👑 PASSA A PRO",
 
             "sidebar.controls": "Controlli",
-            "sidebar.zones": "Zone",
-            "zones.gest": "Zona di gestazione",
-            "zones.22": "Area 22 metri",
-            "zones.line": "Line-out",
-
-            "zones.full": "Campo intero",
-            "zones.note": "Zoom automatico sulla porzione selezionata.",
             "controls.show_labels": "Mostra etichette",
             "controls.hide_labels": "Nascondi etichette",
             "controls.reset_positions": "Reimposta posizioni",
@@ -823,6 +927,34 @@
             "confirm.delete_play": "Eliminare?"
         },
             es: {
+    "sidebar.lab": "RugbyLab",
+    "lab.title": "RugbyLab",
+    "lab.subtitle": "Gestiona bibliotecas de jugadas, comparte y clona.",
+    "lab.open": "Abrir RugbyLab",
+    "lab.create_library": "Crear biblioteca",
+    "lab.add_current_play": "Agregar jugada",
+    "lab.share_library": "Compartir biblioteca",
+    "lab.clone_library": "Clonar biblioteca",
+    "lab.note": "Tip: guarda una jugada y luego agrégala a una biblioteca.",
+    "lab.library_name": "Nombre de biblioteca",
+    "lab.library_desc": "Descripción (opcional)",
+    "lab.save": "Guardar",
+    "lab.refresh": "Actualizar",
+    "lab.delete_library": "Eliminar",
+    "lab.add": "Agregar",
+    "lab.load_play": "Cargar",
+    "lab.no_items": "No hay jugadas en esta biblioteca.",
+    "lab.select_library": "Seleccionar biblioteca",
+    "lab.select_play": "Seleccionar jugada",
+    "lab.created": "¡Biblioteca creada!",
+    "lab.updated": "¡Biblioteca actualizada!",
+    "lab.deleted": "¡Biblioteca eliminada!",
+    "lab.added": "¡Jugada agregada!",
+    "lab.removed": "Eliminada de la biblioteca",
+    "lab.link_copied": "¡Link de biblioteca copiado!",
+    "lab.shared_readonly": "🔗 Biblioteca compartida (solo lectura)",
+    "lab.clone_need_login": "Debes iniciar sesión para clonar."
+
     "premium.title": "Conviértete en Entrenador PRO",
     "premium.desc": "Desbloquea todo el potencial de tu pizarra táctica.",
     "premium.features.animation.title": "Animación y Video",
@@ -852,13 +984,6 @@
     "status.welcome": "Bienvenido {email}!",
 
     "sidebar.controls": "Controles",
-            "sidebar.zones": "Zonas",
-            "zones.gest": "Zona de gestación",
-            "zones.22": "Área de 22 metros",
-            "zones.line": "Line",
-
-            "zones.full": "Campo completo",
-            "zones.note": "Zoom automático a la porción seleccionada.",
     "controls.show_labels": "Mostrar etiquetas",
     "controls.hide_labels": "Ocultar etiquetas",
     "controls.reset_positions": "Restablecer posiciones",
@@ -902,6 +1027,34 @@
     "export.share": "Compartir jugada"
 },
         en: {
+            "sidebar.lab": "RugbyLab",
+            "lab.title": "RugbyLab",
+            "lab.subtitle": "Manage play libraries, share and clone.",
+            "lab.open": "Open RugbyLab",
+            "lab.create_library": "Create Library",
+            "lab.add_current_play": "Add play",
+            "lab.share_library": "Share library",
+            "lab.clone_library": "Clone library",
+            "lab.note": "Tip: save a play first, then add it to a library.",
+            "lab.library_name": "Library name",
+            "lab.library_desc": "Description (optional)",
+            "lab.save": "Save",
+            "lab.refresh": "Refresh",
+            "lab.delete_library": "Delete",
+            "lab.add": "Add",
+            "lab.load_play": "Load",
+            "lab.no_items": "No plays in this library.",
+            "lab.select_library": "Select library",
+            "lab.select_play": "Select play",
+            "lab.created": "Library created!",
+            "lab.updated": "Library updated!",
+            "lab.deleted": "Library deleted!",
+            "lab.added": "Play added!",
+            "lab.removed": "Removed from library",
+            "lab.link_copied": "Library link copied!",
+            "lab.shared_readonly": "🔗 Shared library (read-only)",
+            "lab.clone_need_login": "You must sign in to clone."
+
             "premium.title": "Become a PRO Coach",
             "premium.desc": "Unlock the full power of your tactical board.",
             "premium.features.animation.title": "Animation & Video",
@@ -942,13 +1095,6 @@
             "pro.cta": "👑 GO PRO",
 
             "sidebar.controls": "Controls",
-            "sidebar.zones": "Zones",
-            "zones.gest": "Build-up zone",
-            "zones.22": "22-metre area",
-            "zones.line": "Line-out",
-
-            "zones.full": "Full field",
-            "zones.note": "Auto zoom to the selected portion.",
             "controls.show_labels": "Show labels",
             "controls.hide_labels": "Hide labels",
             "controls.reset_positions": "Reset positions",
@@ -1137,24 +1283,6 @@ let appState = {
         teamLogoDataUrl: null
     };
 
-    // ==========================
-    // FIELD ZONES (crop + zoom)
-    // ==========================
-    const FIELD_VIEW_KEY = 'rb_field_view';
-
-    // Coordinate X dello SVG del campo:
-    // tryline sinistra = 80, 22m = 309, metà = 600, 22m dx = 891, tryline dx = 1120
-    // Larghezza totale SVG = 1200 (WIDTH)
-    const ZONE_X = {
-        // 22m lines nel tuo SVG: 309 (22m sx) e 891 (22m dx)
-        // WIDTH totale = 1200
-        Z22: [0, 309],       // In-goal + 22m (zona 22 propria)
-        MID: [309, 891],     // 22m -> 22m (gestazione)
-        FULL: [0, 1200]
-    };
-
-    appState.fieldView = (localStorage.getItem(FIELD_VIEW_KEY) || 'FULL');
-
     const exportCanvasEl = document.getElementById('exportCanvas');
     const dom = {
         loginOverlay: document.getElementById('loginOverlay'),
@@ -1236,16 +1364,35 @@ let appState = {
         teamALegendSwatch: document.getElementById('teamALegendSwatch'),
         teamBLegendSwatch: document.getElementById('teamBLegendSwatch'),
         teamLogoInput: document.getElementById('teamLogoInput'),
-        zoneMidBtn: document.getElementById('zoneMidBtn'),
-        zone22Btn: document.getElementById('zone22Btn'),
-        lineBtn: document.getElementById('lineBtn'),
-        zoneFullBtn: document.getElementById('zoneFullBtn')
+        // RugbyLab
+        labOpenBtn: document.getElementById('labOpenBtn'),
+        labCreateBtn: document.getElementById('labCreateBtn'),
+        labAddCurrentBtn: document.getElementById('labAddCurrentBtn'),
+        labShareBtn: document.getElementById('labShareBtn'),
+        labCloneBtn: document.getElementById('labCloneBtn'),
+        labLibrarySelect: document.getElementById('labLibrarySelect'),
+        labOverlay: document.getElementById('labOverlay'),
+        labCloseBtn: document.getElementById('labCloseBtn'),
+        labNameInput: document.getElementById('labNameInput'),
+        labDescInput: document.getElementById('labDescInput'),
+        labSaveLibraryBtn: document.getElementById('labSaveLibraryBtn'),
+        labRefreshBtn: document.getElementById('labRefreshBtn'),
+        labDeleteLibraryBtn: document.getElementById('labDeleteLibraryBtn'),
+        labModalLibrarySelect: document.getElementById('labModalLibrarySelect'),
+        labModalShareBtn: document.getElementById('labModalShareBtn'),
+        labModalCloneBtn: document.getElementById('labModalCloneBtn'),
+        labPlaySelect: document.getElementById('labPlaySelect'),
+        labAddPlayBtn: document.getElementById('labAddPlayBtn'),
+        labLoadPlayBtn: document.getElementById('labLoadPlayBtn'),
+        labItemsList: document.getElementById('labItemsList'),
+        labEmpty: document.getElementById('labEmpty')
     };
 
     // Apply initial language + wire language selector
     applyI18n();
     const __langSel = document.getElementById('langSelect');
     if (__langSel) __langSel.addEventListener('change', (e) => setLang(e.target.value));
+
 
     const PremiumManager = {
         open() {
@@ -1389,6 +1536,13 @@ const userRef = doc(db, "users", user.uid);
 });
 
                         await this.testFirebaseConnection();
+                        // If user opened a shared library and asked to clone after login
+                        if (RugbyLabManager?.pendingCloneToken) {
+                            const tok = RugbyLabManager.pendingCloneToken;
+                            RugbyLabManager.pendingCloneToken = null;
+                            try { await RugbyLabManager.cloneSharedLibrary(tok); } catch(e){ console.error(e); }
+                        }
+
                     } else {
                         isAuthorized = false;
                         firebaseConnected = false;
@@ -1591,111 +1745,38 @@ async testFirebaseConnection() {
         },
         fitBoard() {
             const vp = dom.boardViewport.getBoundingClientRect();
-            const availW = vp.width;
-            const availH = vp.height;
-
-            const hasZones = (typeof FieldViewManager !== 'undefined');
-            const range = hasZones ? FieldViewManager.getXRange() : [0, WIDTH];
-            const xmin = range[0], xmax = range[1];
-            const cropW = Math.max(1, xmax - xmin);
-
-            // Persist crop in layout for correct pointer mapping
-            appState.layout.cropXmin = xmin;
-            appState.layout.cropXmax = xmax;
-
+            const availW = vp.width; const availH = vp.height;
             if (!this.isPortraitLike()) {
-                // LANDSCAPE (no rotate)
                 appState.layout.mode = 'landscape';
-
-                const scale = Math.min(availW / cropW, availH / HEIGHT);
-                appState.layout.scale = scale;
-
-                const scaledW = cropW * scale;
-                const scaledH = HEIGHT * scale;
-
-                // Center + apply crop offset
-                appState.layout.tx = (availW - scaledW) / 2 - xmin * scale;
+                appState.layout.scale = Math.min(availW / WIDTH, availH / HEIGHT);
+                const scaledW = WIDTH * appState.layout.scale;
+                const scaledH = HEIGHT * appState.layout.scale;
+                appState.layout.tx = (availW - scaledW) / 2;
                 appState.layout.ty = (availH - scaledH) / 2;
-
-                dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(0deg) scale(${scale})`;
+                dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(0deg) scale(${appState.layout.scale})`;
                 dom.boardWrap.style.transformOrigin = 'top left';
             } else {
-                // PORTRAIT (rotate 90deg)
                 appState.layout.mode = 'portrait';
-
-                // After rotation, visible content dimensions are (HEIGHT x cropW)
-                const scale = Math.min(availW / HEIGHT, availH / cropW);
-                appState.layout.scale = scale;
-
-                const contentW = HEIGHT * scale;
-                const contentH = cropW * scale;
-
-                // Keep your original rotate anchoring (+contentW) and add crop compensation on TY
+                appState.layout.scale = Math.min(availW / HEIGHT, availH / WIDTH);
+                const contentW = HEIGHT * appState.layout.scale;
+                const contentH = WIDTH * appState.layout.scale;
                 appState.layout.tx = (availW - contentW) / 2 + contentW;
-                appState.layout.ty = (availH - contentH) / 2 + xmin * scale;
-
-                dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(90deg) scale(${scale})`;
+                appState.layout.ty = (availH - contentH) / 2;
+                dom.boardWrap.style.transform = `translate(${appState.layout.tx}px, ${appState.layout.ty}px) rotate(90deg) scale(${appState.layout.scale})`;
                 dom.boardWrap.style.transformOrigin = 'top left';
             }
-
             this.applyUprightTransforms();
         },
         clientToBoard(e) {
             const vp = dom.boardViewport.getBoundingClientRect();
             const cx = e.clientX - vp.left;
             const cy = e.clientY - vp.top;
-
-            const xmin = appState.layout.cropXmin || 0;
-
             if (appState.layout.mode === 'portrait') {
                 const x_raw = (cx - appState.layout.tx);
                 const y_raw = (cy - appState.layout.ty);
-
-                const x = xmin + (y_raw / appState.layout.scale);
-                const y = (-x_raw / appState.layout.scale);
-
-                return { x: clamp(x, 0, WIDTH), y: clamp(y, 0, HEIGHT) };
+                return { x: clamp(y_raw / appState.layout.scale, 0, WIDTH), y: clamp(-x_raw / appState.layout.scale, 0, HEIGHT) };
             } else {
-                return {
-                    x: clamp((cx - appState.layout.tx) / appState.layout.scale, 0, WIDTH),
-                    y: clamp((cy - appState.layout.ty) / appState.layout.scale, 0, HEIGHT)
-                };
-
-    // ==========================
-    // FIELD VIEW MANAGER (Zones)
-    // ==========================
-    const FieldViewManager = {
-        getXRange() {
-            const v = appState.fieldView || 'FULL';
-            return ZONE_X[v] || ZONE_X.FULL;
-        },
-
-        setView(view) {
-            appState.fieldView = view;
-            try { localStorage.setItem(FIELD_VIEW_KEY, view); } catch (e) {}
-            this.updateButtons();
-            LayoutManager.fitBoard();
-        },
-
-        updateButtons() {
-            const map = [
-                ['MID', dom.zoneMidBtn],
-                ['Z22', dom.zone22Btn],
-                ['FULL', dom.zoneFullBtn],
-            ];
-
-            map.forEach(([k, el]) => {
-                if (!el) return;
-                el.classList.toggle('active', appState.fieldView === k);
-                el.classList.toggle('alt', appState.fieldView !== k);
-            });
-        },
-
-        init() {
-            this.updateButtons();
-        }
-    };
-
+                return { x: clamp((cx - appState.layout.tx) / appState.layout.scale, 0, WIDTH), y: clamp((cy - appState.layout.ty) / appState.layout.scale, 0, HEIGHT) };
             }
         },
         deltaToBoard(dxClient, dyClient) {
@@ -1869,38 +1950,6 @@ async testFirebaseConnection() {
             LayoutManager.applyUprightTransforms();
             TeamVisualManager.applyColorsToPlayers();
         },
-        createLineoutPlayers() {
-            // Line-out drill: 9 giocatori (Squadra A) in formazione, centrati nella vista corrente.
-            dom.playersLayer.innerHTML = '';
-            appState.selectedPlayers.clear();
-            appState.playerCounter.blue = 0;
-            appState.playerCounter.red = 0;
-
-            const [xmin, xmax] = (typeof FieldViewManager !== 'undefined' ? FieldViewManager.getXRange() : [0, WIDTH]);
-            const xCenter = (xmin + xmax) / 2;
-
-            // Line vicino alla touchline (in alto). Regola qui se la vuoi in basso.
-            const yLine = HEIGHT * 0.15;
-
-            // 7 saltatori/allineati + hooker + scrum-half (totale 9)
-            const spacing = WIDTH * 0.03;
-            const startX = xCenter - spacing * 3;
-
-            const positions = [];
-            for (let i = 0; i < 7; i++) {
-                positions.push({ team: 'blue', number: i + 1, x: startX + i * spacing, y: yLine });
-            }
-            // Hooker (8) e Scrum-half (9) leggermente dietro
-            positions.push({ team: 'blue', number: 8, x: xCenter, y: yLine + HEIGHT * 0.07 });
-            positions.push({ team: 'blue', number: 9, x: xCenter + spacing * 2, y: yLine + HEIGHT * 0.10 });
-
-            positions.forEach(p => dom.playersLayer.appendChild(this.createPlayerElement(p.team, p.number, p.x, p.y)));
-
-            this.placeBall();
-            StorageManager.savePositions();
-            UIManager.updatePlayerCount();
-        },
-
         enableDragPlayer(playerEl, onDrop) {
             if (!isAuthorized || appState.readOnly) return;
             let pointerId = null, startX = 0, startY = 0, origL = 0, origT = 0, lockBallToPlayer = false, offX = 0, offY = 0, isGroupMove = false, playerOffsets = [], isDragging = false;
@@ -2360,7 +2409,445 @@ async testFirebaseConnection() {
         }
     };
 
-    const ExportManager = {
+    
+    // -------------------------
+    // RugbyLab (Libraries)
+    // -------------------------
+    const RugbyLabManager = {
+        pendingCloneToken: null,
+
+        open() {
+            if (dom.labOverlay) {
+                dom.labOverlay.style.display = 'flex';
+                dom.labOverlay.setAttribute('aria-hidden', 'false');
+            }
+            this.refreshAll().catch(console.error);
+        },
+        close() {
+            if (dom.labOverlay) {
+                dom.labOverlay.style.display = 'none';
+                dom.labOverlay.setAttribute('aria-hidden', 'true');
+            }
+        },
+
+        async refreshAll() {
+            // populate library selects + play select + render items for selected library
+            await this.loadLibrariesIntoSelects();
+            await this.loadPlaysIntoSelect(dom.labPlaySelect);
+            await this.renderSelectedLibrary();
+        },
+
+        ensureAuthOrThrow() {
+            if (!isAuthorized || !currentUser) throw new Error("auth");
+            if (!db) throw new Error("db");
+        },
+
+        libsColRef() {
+            return collection(db, "users", currentUser.uid, "libraries");
+        },
+
+        async loadLibrariesIntoSelects() {
+            // If not authed: keep empty selects
+            const setEmpty = () => {
+                const opts = `<option value="">${t('lab.select_library')}</option>`;
+                if (dom.labLibrarySelect) dom.labLibrarySelect.innerHTML = opts;
+                if (dom.labModalLibrarySelect) dom.labModalLibrarySelect.innerHTML = opts;
+            };
+
+            if (!db || !currentUser || !isAuthorized) { setEmpty(); return; }
+
+            setEmpty();
+            const qy = query(this.libsColRef(), orderBy("updatedAt", "desc"));
+            const snap = await getDocs(qy);
+            const libs = [];
+            snap.forEach(d => libs.push({ id: d.id, ...d.data() }));
+            const add = (sel) => {
+                libs.forEach(l => {
+                    const o = document.createElement('option');
+                    o.value = l.id;
+                    o.textContent = l.name || l.id;
+                    sel.appendChild(o);
+                });
+            };
+            if (dom.labLibrarySelect) add(dom.labLibrarySelect);
+            if (dom.labModalLibrarySelect) add(dom.labModalLibrarySelect);
+
+            // keep selection in sync
+            if (dom.labModalLibrarySelect && dom.labLibrarySelect) {
+                if (dom.labLibrarySelect.value && !dom.labModalLibrarySelect.value) dom.labModalLibrarySelect.value = dom.labLibrarySelect.value;
+                if (dom.labModalLibrarySelect.value && !dom.labLibrarySelect.value) dom.labLibrarySelect.value = dom.labModalLibrarySelect.value;
+            }
+        },
+
+        async loadPlaysIntoSelect(sel) {
+            if (!sel) return;
+            sel.innerHTML = `<option value="">${t('lab.select_play')}</option>`;
+            // Use localStorage plays list + Firestore plays list (same logic as StorageManager.updatePlaySelect)
+            try {
+                let plays = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k && k.startsWith(PLAY_PREFIX)) plays.push(k.substring(PLAY_PREFIX.length));
+                }
+                if (db && currentUser && isAuthorized) {
+                    try {
+                        const qy = query(collection(db, "users", currentUser.uid, "plays"), orderBy("updatedAt", "desc"));
+                        const snap = await getDocs(qy);
+                        snap.forEach(d => { if (!plays.includes(d.id)) plays.push(d.id); });
+                    } catch {}
+                }
+                plays.sort().forEach(n => {
+                    const o = document.createElement('option');
+                    o.value = n;
+                    o.textContent = n;
+                    sel.appendChild(o);
+                });
+            } catch {}
+        },
+
+        selectedLibraryId() {
+            return (dom.labModalLibrarySelect?.value || dom.labLibrarySelect?.value || '').trim();
+        },
+
+        async createLibraryQuick() {
+            this.ensureAuthOrThrow();
+            const name = sanitizeInput(prompt(t('lab.library_name')) || '');
+            if (!name) return;
+            const libId = crypto.randomUUID();
+            const now = new Date().toISOString();
+            await setDoc(doc(db, "users", currentUser.uid, "libraries", libId), {
+                name,
+                description: "",
+                visibility: "private",
+                items: [],
+                createdAt: now,
+                updatedAt: now,
+                ownerUid: currentUser.uid,
+                ownerEmail: currentUser.email
+            });
+            PopupManager.showSuccess(t('lab.created'));
+            await this.refreshAll();
+            if (dom.labLibrarySelect) dom.labLibrarySelect.value = libId;
+            if (dom.labModalLibrarySelect) dom.labModalLibrarySelect.value = libId;
+            await this.renderSelectedLibrary();
+        },
+
+        async saveLibraryFromModal() {
+            this.ensureAuthOrThrow();
+            const libId = this.selectedLibraryId();
+            const name = sanitizeInput(dom.labNameInput?.value || '');
+            const description = sanitizeInput(dom.labDescInput?.value || '');
+            if (!name) { alert(t('alert.missing_name')); return; }
+
+            const now = new Date().toISOString();
+            if (libId) {
+                // update
+                const ref = doc(db, "users", currentUser.uid, "libraries", libId);
+                const snap = await getDoc(ref);
+                const prev = snap.exists() ? snap.data() : {};
+                await setDoc(ref, { ...prev, name, description, updatedAt: now }, { merge: true });
+                PopupManager.showSuccess(t('lab.updated'));
+            } else {
+                // create new
+                const newId = crypto.randomUUID();
+                await setDoc(doc(db, "users", currentUser.uid, "libraries", newId), {
+                    name,
+                    description,
+                    visibility: "private",
+                    items: [],
+                    createdAt: now,
+                    updatedAt: now,
+                    ownerUid: currentUser.uid,
+                    ownerEmail: currentUser.email
+                });
+                PopupManager.showSuccess(t('lab.created'));
+                if (dom.labLibrarySelect) dom.labLibrarySelect.value = newId;
+                if (dom.labModalLibrarySelect) dom.labModalLibrarySelect.value = newId;
+            }
+            await this.refreshAll();
+        },
+
+        async deleteSelectedLibrary() {
+            this.ensureAuthOrThrow();
+            const libId = this.selectedLibraryId();
+            if (!libId) return;
+            if (!confirm(t('confirm.delete_play'))) return;
+            await deleteDoc(doc(db, "users", currentUser.uid, "libraries", libId));
+            PopupManager.showSuccess(t('lab.deleted'));
+            if (dom.labLibrarySelect) dom.labLibrarySelect.value = "";
+            if (dom.labModalLibrarySelect) dom.labModalLibrarySelect.value = "";
+            await this.refreshAll();
+        },
+
+        async getPlayDataByName(name) {
+            if (!name) return null;
+            // prefer Firestore, fallback local
+            if (db && currentUser && isAuthorized) {
+                try {
+                    const snap = await getDoc(doc(db, "users", currentUser.uid, "plays", name));
+                    if (snap.exists()) return snap.data();
+                } catch {}
+            }
+            const raw = localStorage.getItem(PLAY_PREFIX + name);
+            if (raw) return JSON.parse(raw);
+            return null;
+        },
+
+        async addPlayToSelectedLibrary(playName) {
+            this.ensureAuthOrThrow();
+            const libId = this.selectedLibraryId();
+            if (!libId) { alert(t('lab.select_library')); return; }
+            const name = sanitizeInput(playName || '');
+            if (!name) { alert(t('lab.select_play')); return; }
+
+            const ref = doc(db, "users", currentUser.uid, "libraries", libId);
+            const snap = await getDoc(ref);
+            if (!snap.exists()) { alert("Library not found"); return; }
+            const lib = snap.data() || {};
+            const items = Array.isArray(lib.items) ? lib.items : [];
+
+            // avoid duplicates by playName
+            if (items.some(it => it.playName === name)) {
+                PopupManager.showSuccess("✅ Already in library");
+                return;
+            }
+
+            const playData = await this.getPlayDataByName(name);
+            if (!playData) { alert("Play not found"); return; }
+
+            items.push({
+                playName: name,
+                addedAt: new Date().toISOString(),
+                // embed snapshot for sharing
+                snapshot: {
+                    name: playData.name || name,
+                    timeline: playData.timeline || [],
+                    arrows: playData.arrows || [],
+                    strokes: playData.strokes || [],
+                    positions: playData.positions || null,
+                    ball: playData.ball || null,
+                    teamColors: playData.teamColors || null,
+                    teamLogoDataUrl: playData.teamLogoDataUrl || null
+                }
+            });
+
+            await setDoc(ref, { ...lib, items, updatedAt: new Date().toISOString() }, { merge: true });
+            PopupManager.showSuccess(t('lab.added'));
+            await this.renderSelectedLibrary();
+        },
+
+        async removeItemAt(index) {
+            this.ensureAuthOrThrow();
+            const libId = this.selectedLibraryId();
+            if (!libId) return;
+            const ref = doc(db, "users", currentUser.uid, "libraries", libId);
+            const snap = await getDoc(ref);
+            if (!snap.exists()) return;
+            const lib = snap.data() || {};
+            const items = Array.isArray(lib.items) ? lib.items : [];
+            if (index < 0 || index >= items.length) return;
+            items.splice(index, 1);
+            await setDoc(ref, { ...lib, items, updatedAt: new Date().toISOString() }, { merge: true });
+            PopupManager.showSuccess(t('lab.removed'));
+            await this.renderSelectedLibrary();
+        },
+
+        async renderSelectedLibrary() {
+            const list = dom.labItemsList;
+            if (!list) return;
+
+            // Shared library view
+            if (appState.sharedLibrary && appState.sharedLibrary.items) {
+                this.renderItemsList(appState.sharedLibrary.items, { readOnly: true });
+                return;
+            }
+
+            // Authed library view
+            if (!db || !currentUser || !isAuthorized) {
+                list.innerHTML = `<div class="lab-empty">${t('auth.not_authenticated')}</div>`;
+                if (dom.labEmpty) dom.labEmpty.style.display = 'none';
+                return;
+            }
+            const libId = this.selectedLibraryId();
+            if (!libId) {
+                list.innerHTML = `<div class="lab-empty">${t('lab.select_library')}</div>`;
+                if (dom.labEmpty) dom.labEmpty.style.display = 'none';
+                return;
+            }
+            const ref = doc(db, "users", currentUser.uid, "libraries", libId);
+            const snap = await getDoc(ref);
+            if (!snap.exists()) {
+                list.innerHTML = `<div class="lab-empty">Not found</div>`;
+                if (dom.labEmpty) dom.labEmpty.style.display = 'none';
+                return;
+            }
+            const lib = snap.data() || {};
+            if (dom.labNameInput) dom.labNameInput.value = lib.name || '';
+            if (dom.labDescInput) dom.labDescInput.value = lib.description || '';
+            const items = Array.isArray(lib.items) ? lib.items : [];
+            this.renderItemsList(items, { readOnly: false });
+        },
+
+        renderItemsList(items, { readOnly }) {
+            const list = dom.labItemsList;
+            if (!list) return;
+
+            if (!items || items.length === 0) {
+                list.innerHTML = "";
+                if (dom.labEmpty) dom.labEmpty.style.display = 'block';
+                return;
+            }
+            if (dom.labEmpty) dom.labEmpty.style.display = 'none';
+
+            list.innerHTML = "";
+            items.forEach((it, idx) => {
+                const row = document.createElement('div');
+                row.className = 'lab-item';
+                const left = document.createElement('div');
+                left.innerHTML = `<strong>${it.playName || it.snapshot?.name || 'Play'}</strong><div><small>${it.addedAt ? new Date(it.addedAt).toLocaleString() : ''}</small></div>`;
+                const right = document.createElement('div');
+                right.className = 'lab-actions';
+
+                const loadBtn = document.createElement('button');
+                loadBtn.className = 'btn';
+                loadBtn.textContent = t('lab.load_play');
+                loadBtn.onclick = async () => {
+                    const data = it.snapshot;
+                    if (!data) return;
+                    await StorageManager.processPlayData(data, it.playName || data.name || 'Play');
+                };
+                right.appendChild(loadBtn);
+
+                if (!readOnly) {
+                    const rm = document.createElement('button');
+                    rm.className = 'btn alt';
+                    rm.textContent = '—';
+                    rm.title = 'Remove';
+                    rm.onclick = () => this.removeItemAt(idx).catch(console.error);
+                    right.appendChild(rm);
+                } else {
+                    const pill = document.createElement('span');
+                    pill.className = 'lab-pill';
+                    pill.textContent = 'Read-only';
+                    right.appendChild(pill);
+                }
+
+                row.appendChild(left);
+                row.appendChild(right);
+                list.appendChild(row);
+            });
+        },
+
+        async shareSelectedLibrary() {
+            // 👑 PREMIUM gate (same spirit as share play)
+            if (!PremiumManager.checkAndShowModal()) return;
+
+            this.ensureAuthOrThrow();
+            const libId = this.selectedLibraryId();
+            if (!libId) return alert(t('lab.select_library'));
+
+            const ref = doc(db, "users", currentUser.uid, "libraries", libId);
+            const snap = await getDoc(ref);
+            if (!snap.exists()) return alert("Library not found");
+            const lib = snap.data() || {};
+            const token = crypto.randomUUID();
+
+            // Store a shared copy in a public-ish collection for link sharing
+            await setDoc(doc(db, "shared_libraries", token), {
+                token,
+                name: lib.name || "Library",
+                description: lib.description || "",
+                items: Array.isArray(lib.items) ? lib.items : [],
+                createdAt: new Date().toISOString(),
+                ownerUid: currentUser.uid,
+                ownerEmail: currentUser.email
+            });
+
+            const url = new URL(window.location.href);
+            url.searchParams.delete('shared');
+            url.searchParams.set('sharedLib', token);
+            const sUrl = url.toString();
+
+            let ok = false;
+            if (navigator.share) {
+                try { await navigator.share({ title: 'RugbyLab', text: lib.name || 'RugbyLab Library', url: sUrl }); ok = true; } catch {}
+            }
+            if (!ok && navigator.clipboard) {
+                try { await navigator.clipboard.writeText(sUrl); PopupManager.showSuccess(t('lab.link_copied')); ok = true; } catch {}
+            }
+            if (!ok) alert('Link: ' + sUrl);
+        },
+
+        async loadSharedLibrary(token) {
+            if (!db) return alert(t('alert.firebase_off'));
+            const s = await getDoc(doc(db, "shared_libraries", token));
+            if (!s.exists()) return alert(t('alert.not_found'));
+            const lib = s.data() || {};
+            appState.sharedLibrary = lib;
+            if (dom.labNameInput) dom.labNameInput.value = lib.name || '';
+            if (dom.labDescInput) dom.labDescInput.value = lib.description || '';
+            this.renderItemsList(lib.items || [], { readOnly: true });
+        },
+
+        async cloneSharedLibrary(token) {
+            if (!currentUser || !isAuthorized) {
+                PopupManager.showSuccess(t('lab.clone_need_login'));
+                // trigger login overlay
+                RugbyLabManager.pendingCloneToken = token;
+                AuthManager.showLogin();
+                return;
+            }
+            this.ensureAuthOrThrow();
+            const s = await getDoc(doc(db, "shared_libraries", token));
+            if (!s.exists()) return alert(t('alert.not_found'));
+            const lib = s.data() || {};
+            const now = new Date().toISOString();
+            const newId = crypto.randomUUID();
+            await setDoc(doc(db, "users", currentUser.uid, "libraries", newId), {
+                name: (lib.name ? (lib.name + " (clone)") : "Library (clone)"),
+                description: lib.description || "",
+                visibility: "private",
+                items: Array.isArray(lib.items) ? lib.items : [],
+                createdAt: now,
+                updatedAt: now,
+                ownerUid: currentUser.uid,
+                ownerEmail: currentUser.email,
+                clonedFromToken: token
+            });
+            PopupManager.showSuccess("✅ Cloned!");
+            appState.sharedLibrary = null;
+            await this.loadLibrariesIntoSelects();
+            if (dom.labLibrarySelect) dom.labLibrarySelect.value = newId;
+            if (dom.labModalLibrarySelect) dom.labModalLibrarySelect.value = newId;
+            await this.renderSelectedLibrary();
+        }
+    };
+
+    function getSharedLibTokenFromUrl() {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('sharedLib');
+    }
+
+    async function initSharedLibraryView(token) {
+      // Firebase app/db without login
+      if (!app) app = initializeApp(firebaseConfig);
+      if (!db) db = getFirestore(app);
+
+      appState.isSharedView = true;
+      appState.readOnly = true;
+
+      AuthManager.showApp();
+      AuthManager.showStatus(t('lab.shared_readonly'), 'success');
+      AuthManager.updateFirebaseStatus(true);
+
+      UIManager.applyReadOnlyMode();
+
+      // Open RugbyLab modal and load the library
+      RugbyLabManager.open();
+      await RugbyLabManager.loadSharedLibrary(token);
+    }
+
+const ExportManager = {
         async drawPitch(ctx) {
             ctx.clearRect(0, 0, WIDTH, HEIGHT); ctx.fillStyle = '#137a46'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
             const svg = dom.board.querySelector('.lines').cloneNode(true), dr = dom.draw.cloneNode(true);
@@ -2383,13 +2870,6 @@ async testFirebaseConnection() {
         async renderFrameToCanvas(f) { if (!dom.ctx) return; await this.drawPitch(dom.ctx); f.players.forEach(p => this.drawPlayer(dom.ctx, p)); this.drawBall(dom.ctx, f.ball); },
         setupExportUI() {
             PremiumManager.initListeners();
-
-            // Zones (Field view)
-            dom.zoneMidBtn && dom.zoneMidBtn.addEventListener('click', () => FieldViewManager.setView('MID'));
-            dom.zone22Btn && dom.zone22Btn.addEventListener('click', () => FieldViewManager.setView('Z22'));
-            dom.zoneFullBtn && dom.zoneFullBtn.addEventListener('click', () => FieldViewManager.setView('FULL'));
-            dom.lineBtn && dom.lineBtn.addEventListener('click', () => UnitsManager.createLineoutPlayers());
-
             // Open PRO modal only when user clicks CTA button
             const btnSidebarPro = document.getElementById('btnSidebarPro');
             btnSidebarPro?.addEventListener('click', (e) => {
@@ -2475,7 +2955,47 @@ async testFirebaseConnection() {
                 }
             });
 
+            
             dom.sharePlayBtn.addEventListener('click', () => StorageManager.createShareLink());
+
+            // RugbyLab listeners
+            dom.labOpenBtn?.addEventListener('click', () => RugbyLabManager.open());
+            dom.labCloseBtn?.addEventListener('click', () => RugbyLabManager.close());
+            dom.labOverlay?.addEventListener('click', (e) => { if (e.target === dom.labOverlay) RugbyLabManager.close(); });
+
+            dom.labCreateBtn?.addEventListener('click', () => RugbyLabManager.createLibraryQuick().catch(console.error));
+            dom.labAddCurrentBtn?.addEventListener('click', () => RugbyLabManager.addPlayToSelectedLibrary(dom.playNameInput?.value || '').catch(console.error));
+            dom.labShareBtn?.addEventListener('click', () => RugbyLabManager.shareSelectedLibrary().catch(console.error));
+            dom.labCloneBtn?.addEventListener('click', async () => {
+                const token = getSharedLibTokenFromUrl();
+                if (token) return RugbyLabManager.cloneSharedLibrary(token).catch(console.error);
+                alert("Apri un link di libreria per clonare.");
+            });
+
+            dom.labRefreshBtn?.addEventListener('click', () => RugbyLabManager.refreshAll().catch(console.error));
+            dom.labSaveLibraryBtn?.addEventListener('click', () => RugbyLabManager.saveLibraryFromModal().catch(console.error));
+            dom.labDeleteLibraryBtn?.addEventListener('click', () => RugbyLabManager.deleteSelectedLibrary().catch(console.error));
+            dom.labModalShareBtn?.addEventListener('click', () => RugbyLabManager.shareSelectedLibrary().catch(console.error));
+            dom.labModalCloneBtn?.addEventListener('click', async () => {
+                const token = getSharedLibTokenFromUrl();
+                if (token) return RugbyLabManager.cloneSharedLibrary(token).catch(console.error);
+                alert("Apri un link di libreria per clonare.");
+            });
+            dom.labAddPlayBtn?.addEventListener('click', () => RugbyLabManager.addPlayToSelectedLibrary(dom.labPlaySelect?.value || '').catch(console.error));
+            dom.labLoadPlayBtn?.addEventListener('click', async () => {
+                const name = dom.labPlaySelect?.value || '';
+                if (!name) return;
+                await StorageManager.loadPlay(name);
+            });
+            dom.labLibrarySelect?.addEventListener('change', async () => {
+                if (dom.labModalLibrarySelect) dom.labModalLibrarySelect.value = dom.labLibrarySelect.value;
+                await RugbyLabManager.renderSelectedLibrary();
+            });
+            dom.labModalLibrarySelect?.addEventListener('change', async () => {
+                if (dom.labLibrarySelect) dom.labLibrarySelect.value = dom.labModalLibrarySelect.value;
+                await RugbyLabManager.renderSelectedLibrary();
+            });
+
             if (dom.presentationModeBtn) dom.presentationModeBtn.addEventListener('click', () => UIManager.togglePresentationMode());
 
             // 👑 PREMIUM: AutoRecord solo se puede activar si eres premium
@@ -2533,7 +3053,6 @@ async function initSharedView(sharedId) {
 
   // Layout
   LayoutManager.renderGrid();
-  FieldViewManager.init();
   LayoutManager.fitBoard();
 }
 
@@ -2541,6 +3060,15 @@ async function initSharedView(sharedId) {
     async function init() {
   try {
     const sharedId = getSharedIdFromUrl();
+    const sharedLibToken = getSharedLibTokenFromUrl();
+
+    // ✅ Shared library link: no login needed
+    if (sharedLibToken) {
+      await initSharedLibraryView(sharedLibToken);
+      UIManager.setupEventListeners();
+      return;
+    }
+
 
     // ✅ Si viene link compartido, NO pedir login
     if (sharedId) {
@@ -2588,7 +3116,6 @@ async function initSharedView(sharedId) {
       });
 
       StorageManager.updatePlaySelect();
-      FieldViewManager.init();
       LayoutManager.fitBoard();
       InteractionManager.enableSelectionBox();
     } else {
